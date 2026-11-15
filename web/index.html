@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Элдик Көзөмөл — сообщить о нарушении</title>
+<style>
+:root{font-family:Inter,system-ui,Arial;color:#eaf2f8;background:#0b1521}
+*{box-sizing:border-box}body{margin:0;padding:28px 16px}.wrap{max-width:720px;margin:auto}
+header{display:flex;gap:14px;align-items:center;margin-bottom:28px}.logo{width:48px;height:48px;border-radius:14px;background:#123e59;display:grid;place-items:center;font-size:24px}
+h1{font-size:22px;margin:0}p{color:#a9bdcc;line-height:1.5}.card{background:#142536;border:1px solid #294156;border-radius:18px;padding:22px}
+label{display:block;margin:15px 0 7px;color:#c9d8e3}input,select,textarea{width:100%;padding:13px;border-radius:10px;border:1px solid #3b5368;background:#0c1b29;color:#fff;font:inherit}
+textarea{min-height:150px;resize:vertical}button{margin-top:18px;width:100%;padding:14px;border:0;border-radius:11px;background:#1688b9;color:white;font-weight:700;font-size:16px}
+.note{font-size:12px;color:#9eb3c3}.result{padding:14px;background:#103b31;border-radius:10px;margin-top:16px;display:none;overflow-wrap:anywhere}
+</style></head>
+<body><main class="wrap">
+<header><div class="logo">🛡</div><div><h1>Элдик Көзөмөл</h1><p style="margin:3px 0">Безопасный канал сообщений</p></div></header>
+<section class="card">
+<h2>Сообщить о нарушении</h2>
+<p>Перед отправкой убедитесь, что описываете известные вам факты. Не публикуйте чужие персональные данные без необходимости.</p>
+<p class="note">Это независимый прототип, не официальный государственный портал. Форма не гарантирует полной анонимности. При непосредственной угрозе жизни или здоровью используйте экстренные службы.</p>
+<form id="report">
+<label>Язык</label><select id="language"><option value="ru">Русский</option><option value="ky">Кыргызча</option></select>
+<label>Категория</label><select id="category"><option value="corruption">Коррупция</option><option value="crime">Преступление</option><option value="abuse">Злоупотребление полномочиями</option><option value="cybercrime">Киберпреступление</option><option value="other">Другое</option></select>
+<label>Область / город (необязательно)</label><input id="region" maxlength="100">
+<label>Район (необязательно)</label><input id="district" maxlength="100">
+<label>Описание (от 30 символов)</label><textarea id="description" minlength="30" maxlength="10000" required></textarea>
+<p class="note">Не указывайте ФИО, телефон, адрес проживания или иные данные, позволяющие установить вашу личность, если не хотите их раскрывать. В этой версии нет защищённого диалога для ответа.</p>
+<button type="submit">Отправить обращение</button>
+</form><div class="result" id="result"></div>
+</section></main><script src="config.js"></script><script>
+document.getElementById("report").addEventListener("submit",async e=>{
+ e.preventDefault();const b=e.target.querySelector("button");b.disabled=true;b.textContent="Отправка…";
+ const payload={language:language.value,category:category.value,region:region.value||null,district:district.value||null,description:description.value};
+ try{const r=await fetch(window.ELDIK_API_BASE+"/api/v1/reports",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+ const d=await r.json();if(!r.ok)throw new Error(d.detail||"Ошибка отправки");
+ const box=document.getElementById("result");box.style.display="block";box.textContent="Обращение зарегистрировано. Номер: "+d.public_code+" Сохраните его для проверки статуса.";e.target.reset();
+ }catch(err){alert("Не удалось отправить: "+err.message)}finally{b.disabled=false;b.textContent="Отправить обращение"}
+});
+</script></body></html>

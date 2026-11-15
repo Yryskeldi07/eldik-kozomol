@@ -1,0 +1,54 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Database and backups
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+backup_*
+
+# Logs
+*.log
+
+# Temporary files
+.DS_Store
+Thumbs.db
+env.example
+
+# Old project copies and duplicate root files
+/eldik_kozomol_ready_v3/
+/Dockerfile
+/Dockerfile (2)
+/admin (4).html
+/admin.html
+/config.js
+/config.py
+/db.py
+/download
+/index.html
+/main (3).py
+/models.py
+/requirements.txt
+/requirements (1).txt
+
+# Backend backup files
+/backend/app/*.backup*
+/backend/app/*.stats-backup
+
+*.status-backup
