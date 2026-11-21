@@ -95,6 +95,22 @@ def public_site(request:Request):
     html=html.replace('__SITE_URL__',base)
     return Response(html,media_type='text/html; charset=utf-8')
 
+@app.get('/assets/{filename}', include_in_schema=False)
+def public_assets(filename: str):
+    allowed_files = {
+        'eldik-emblem.png',
+        'hero-kyrgyzstan.jpg',
+    }
+    if filename not in allowed_files:
+        raise HTTPException(404, 'Файл не найден')
+
+    asset_path = Path(__file__).parents[1] / 'web' / 'assets' / filename
+    if not asset_path.is_file():
+        raise HTTPException(404, 'Файл не найден')
+
+    return FileResponse(asset_path)
+
+
 @app.get('/robots.txt',include_in_schema=True)
 def robots(request:Request):
     base=str(request.base_url).rstrip('/')
