@@ -535,6 +535,20 @@ async function downloadAttachment(id,name){
  link.href=url;link.download=name||'attachment';document.body.append(link);link.click();link.remove();
  setTimeout(()=>URL.revokeObjectURL(url),1500);
 }
+async function deleteAttachment(id,name){
+ if(!can('operator')){
+  $('modalMsg').textContent='Недостаточно прав для удаления файла';
+  return;
+ }
+ if(!confirm('Удалить файл «'+(name||'без названия')+'»? Это действие нельзя отменить.'))return;
+ try{
+  await api('/api/v1/admin/attachments/'+encodeURIComponent(id),{method:'DELETE'});
+  await openReport(current);
+  $('modalMsg').textContent='Файл успешно удалён';
+ }catch(e){
+  $('modalMsg').textContent='Ошибка удаления: '+e.message;
+ }
+}
 async function renderAttachments(items){
  const root=$('attachments');root.innerHTML='';
  if(!items.length){root.className='';root.textContent='Вложений пока нет';return}
@@ -554,7 +568,18 @@ async function renderAttachments(items){
   const actions=document.createElement('div');actions.className='attachment-actions';
   const download=document.createElement('button');download.type='button';download.className='secondary';download.textContent='Скачать';
   download.onclick=async()=>{download.disabled=true;try{await downloadAttachment(item.id,item.name)}catch(e){$('modalMsg').textContent=e.message}finally{download.disabled=false}};
-  actions.append(download);card.append(name,meta,actions);root.append(card);
+  actions.append(download);
+  if(can('operator')){
+   const remove=document.createElement('button');
+   remove.type='button';remove.className='danger';remove.textContent='Удалить';
+   remove.onclick=async()=>{
+    remove.disabled=true;
+    try{await deleteAttachment(item.id,item.name)}
+    finally{remove.disabled=false}
+   };
+   actions.append(remove);
+  }
+  card.append(name,meta,actions);root.append(card);
  }
 }
 function openImageViewer(url){if(!url)return;$('imageViewerImg').src=url;$('imageViewer').classList.add('open')}

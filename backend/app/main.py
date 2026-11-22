@@ -324,6 +324,45 @@ async def download_attachment(attachment_id:str,user:AdminUser=Depends(require_r
         media_type=a.content_type or 'application/octet-stream',
         headers={'Content-Disposition': f'attachment; filename="{quote(a.original_name)}"'}
     )
+@app.delete('/api/v1/admin/attachments/{attachment_id}')
+async def delete_attachment(
+    attachment_id: str,
+    user: AdminUser = Depends(require_roles('operator')),
+    db: Session = Depends(get_db),
+):
+    attachment = db.get(Attachment, attachment_id)
+    if not attachment:
+        raise HTTPException(404, 'Файл не найден')
+    report = db.get(Report, attachment.report_id)
+    if not report:
+        raise HTTPException(404, 'Обращение, к которому прикреплён файл, не найдено')
+
+    supabase_url, service_key, bucket = _supabase_storage_config()
+    request = urllib.request.Request(
+        _storage_object_url(supabase_url, bucket, attachment.stored_name),
+        headers={'apikey': service_key, 'Authorization': f'Bearer {service_key}'},
+        method='DELETE',
+    )
+    try:
+        await asyncio.to_thread(lambda: urllib.request.urlopen(request, timeout=60).read())
+    except urllib.error.HTTPError as exc:
+        if exc.code != 404:
+            details = exc.read().decode('utf-8', errors='replace')[:1000]
+            raise HTTPException(502, f'Ошибка Supabase Storage при удалении: {details}') from exc
+    except Exception as exc:
+        raise HTTPException(502, f'Не удалось удалить файл из Supabase Storage: {str(exc)[:300]}') from exc
+
+    original_name = attachment.original_name
+    try:
+        audit(db, report, user.username, 'Удаление вложения', f'Удалён файл: {original_name}')
+        db.delete(attachment)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(500, 'Объект удалён из хранилища, но запись базы не обновлена. Обратитесь к администратору.') from exc
+    return {'ok': True, 'message': 'Файл удалён'}
+
+
 @app.get('/api/v1/admin/users')
 def users_list(user:AdminUser=Depends(require_roles('superadmin')),db:Session=Depends(get_db)):
     return [user_dict(u) for u in db.scalars(select(AdminUser).order_by(AdminUser.created_at)).all()]
