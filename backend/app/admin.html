@@ -327,6 +327,49 @@ const cats={corruption:'Коррупция',crime:'Преступление',abu
 const roles={superadmin:'SUPERADMIN',admin:'Администратор',manager:'Руководитель',operator:'Оператор',viewer:'Наблюдатель'};
 const prio={low:'Низкий',normal:'Обычный',high:'Высокий',critical:'Критический'};
 
+// Исправляет текст, который ранее был сохранён/передан в неверной кодировке.
+function fixText(value){
+ if(value===null||value===undefined)return '';
+ let s=String(value);
+ if(!/[ÐÑÃâ]/.test(s))return s;
+ const cp1252={8364:128,8218:130,402:131,8222:132,8230:133,8224:134,8225:135,710:136,8240:137,352:138,8249:139,338:140,381:142,8216:145,8217:146,8220:147,8221:148,8226:149,8211:150,8212:151,732:152,8482:153,353:154,8250:155,339:156,382:158,376:159};
+ try{
+  const bytes=[];
+  for(const ch of s){
+   const code=ch.charCodeAt(0);
+   if(code<=255)bytes.push(code);
+   else if(cp1252[code]!==undefined)bytes.push(cp1252[code]);
+   else return s;
+  }
+  const decoded=new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(bytes));
+  return /[А-Яа-яЁёҚқӨөҮүҢң]/.test(decoded)?decoded:s;
+ }catch(_){return s}
+}
+const actionLabels={
+ 'Изменение контрольного статуса':'Изменение контрольного статуса',
+ 'Изменение статуса':'Изменение статуса',
+ 'Изменение контрольного срока':'Изменение контрольного срока',
+ 'Назначение исполнителя':'Назначение исполнителя',
+ 'Изменение исполнителя':'Изменение исполнителя',
+ 'Вложение':'Вложение',
+ 'Удаление вложения':'Удаление вложения'
+};
+function displayAction(value){
+ const s=fixText(value);
+ return actionLabels[s]||s;
+}
+function displayDetails(value){
+ let s=fixText(value);
+ s=s.replace(/\bnew\b/g,'Новое')
+    .replace(/\breview\b/g,'На проверке')
+    .replace(/\breferred\b/g,'Передано')
+    .replace(/\bneed_info\b/g,'Нужна информация')
+    .replace(/\bclosed\b/g,'Закрыто')
+    .replace(/â‡’|â†’|â€™|→/g,' → ');
+ return s;
+}
+
+
 const dt=v=>v?new Date(v).toLocaleString('ru-RU'):'—';
 const can=r=>({superadmin:6,admin:5,manager:4,operator:3,viewer:1}[me?.role]||0)>=({superadmin:6,admin:5,manager:4,operator:3,viewer:1}[r]||99);
 
@@ -480,7 +523,7 @@ $('history').innerHTML='';
 for(let h of r.history){
 let d=document.createElement('div');
 d.className='listitem';
-d.textContent=dt(h.created_at)+' · '+h.actor+' · '+h.action+'\n'+h.details;
+d.textContent=dt(h.created_at)+' · '+fixText(h.actor)+' · '+displayAction(h.action)+'\n'+displayDetails(h.details);
 $('history').append(d)
 }
 $('attachments').innerHTML='';
@@ -771,7 +814,7 @@ $('auditList').innerHTML='';
 for(let x of a){
 let d=document.createElement('div');
 d.className='listitem';
-d.textContent=dt(x.created_at)+' · '+x.actor+' · '+x.action+' · '+x.report_id+'\n'+x.details;
+d.textContent=dt(x.created_at)+' · '+fixText(x.actor)+' · '+displayAction(x.action)+' · '+x.report_id+'\n'+displayDetails(x.details);
 $('auditList').append(d)
 }
 }
