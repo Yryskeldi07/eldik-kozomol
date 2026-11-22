@@ -142,13 +142,77 @@ def change_password(p:dict,user:AdminUser=Depends(current_user),db:Session=Depen
     if not verify_password(old,user.password_hash):raise HTTPException(400,'Ð¢ÐµÐºÑƒÑ‰Ð¸Ð¹ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ Ð½ÐµÐ²ÐµÑ€ÐµÐ½')
     if len(new)<14:raise HTTPException(400,'ÐÐ¾Ð²Ñ‹Ð¹ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ Ð´Ð¾Ð»Ð¶ÐµÐ½ ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‚ÑŒ Ð½Ðµ Ð¼ÐµÐ½ÐµÐµ 14 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²')
     user.password_hash=hash_password(new);db.commit();return {'ok':True}
-@app.post('/api/v1/reports',response_model=ReportCreated,status_code=201)
+def public_upload_token(code:str)->str:
+    # Token is scoped to one public report code and signed with the server secret.
+    message=('eldik-public-upload:'+code).encode('utf-8')
+    return hmac.new(settings.app_secret.encode('utf-8'),message,hashlib.sha256).hexdigest()
+
+
+@app.post('/api/v1/reports',status_code=201)
 def create_report(p:ReportCreate,db:Session=Depends(get_db)):
-    r=Report(public_code=make_code(),**p.model_dump(),status=Status.new);db.add(r);db.commit()
-    return ReportCreated(public_code=r.public_code,status='new',message='ÐžÐ±Ñ€Ð°Ñ‰ÐµÐ½Ð¸Ðµ Ð·Ð°Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¾. Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚Ðµ Ð½Ð¾Ð¼ÐµÑ€ Ð´Ð»Ñ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÐ¸ ÑÑ‚Ð°Ñ‚ÑƒÑÐ°.')
+    r=Report(public_code=make_code(),**p.model_dump(),status=Status.new);db.add(r);db.commit();db.refresh(r)
+    return {'public_code':r.public_code,'status':'new','message':'Обращение зарегистрировано. Сохраните номер для проверки статуса.','upload_token':public_upload_token(r.public_code)}
 @app.get('/api/v1/reports/{public_code}')
 def public_status(public_code:str,db:Session=Depends(get_db)):
     r=find_report(db,public_code);return {'public_code':r.public_code,'status':r.status.value,'created_at':iso(r.created_at)}
+@app.post('/api/v1/reports/{public_code}/attachments')
+async def public_upload_attachment(
+    public_code:str,
+    upload_token:str=Query(...),
+    file:UploadFile=File(...),
+    db:Session=Depends(get_db),
+):
+    report=find_report(db,public_code)
+    expected=public_upload_token(public_code)
+    if not hmac.compare_digest(upload_token,expected):
+        raise HTTPException(403,'Недействительный ключ загрузки файлов')
+
+    allowed={
+        'image/jpeg','image/png','image/webp',
+        'application/pdf','application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'video/mp4','video/webm',
+    }
+    content_type=(file.content_type or '').lower().split(';',1)[0].strip()
+    if content_type not in allowed:
+        raise HTTPException(415,'Разрешены JPG, PNG, WEBP, PDF, DOC, DOCX, MP4 и WEBM')
+
+    limit=settings.max_upload_mb*1024*1024
+    data=await file.read(limit+1)
+    if not data:
+        raise HTTPException(400,'Файл пустой')
+    if len(data)>limit:
+        raise HTTPException(413,f'Максимальный размер файла: {settings.max_upload_mb} МБ')
+
+    original_name=Path(file.filename or 'evidence').name[:255] or 'evidence'
+    suffix=Path(original_name).suffix.lower()[:10]
+    stored=f'{uuid.uuid4().hex}{suffix}'
+    await asyncio.to_thread(_supabase_upload,data,stored,content_type)
+    try:
+        attachment=Attachment(
+            report_id=report.id,original_name=original_name,stored_name=stored,
+            content_type=content_type,size=len(data),uploaded_by='public',
+        )
+        db.add(attachment)
+        audit(db,report,'public','Доказательство',f'Загружен файл: {original_name}')
+        db.commit()
+        db.refresh(attachment)
+    except Exception:
+        db.rollback()
+        try:
+            supabase_url,service_key,bucket=_supabase_storage_config()
+            delete_request=urllib.request.Request(
+                _storage_object_url(supabase_url,bucket,stored),
+                headers={'apikey':service_key,'Authorization':f'Bearer {service_key}'},
+                method='DELETE',
+            )
+            await asyncio.to_thread(lambda: urllib.request.urlopen(delete_request,timeout=30).read())
+        except Exception:
+            pass
+        raise
+    return {'id':attachment.id,'name':attachment.original_name,'size':attachment.size,'content_type':attachment.content_type}
+
+
 @app.get('/api/v1/admin/stats')
 def stats(user:AdminUser=Depends(require_roles('viewer')),db:Session=Depends(get_db)):
     total=db.scalar(select(func.count()).select_from(Report)) or 0
