@@ -1,11 +1,14 @@
 import asyncio
 import os
+import html
 from typing import Any
 
 import httpx
 from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, F
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -80,9 +83,9 @@ TEXT: dict[str, dict[str, str]] = {
         "connection_error": "Не удалось подключиться к серверу. Попробуйте позже. Обращение не подтверждено как зарегистрированное.",
         "server_error": "Сервер не принял обращение. Попробуйте позже. Обращение не подтверждено как зарегистрированное.",
         "bad_response": "Сервер вернул некорректный ответ. Не удалось подтвердить регистрацию обращения.",
-        "registered": "✅ <b>Обращение зарегистрировано</b>\n\n<b>Номер:</b> <code>{code}</code>\n\nВы можете прикрепить материалы: фотографии, документы или видео. Отправляйте файлы по одному. Когда закончите, нажмите кнопку «Завершить».\n\nСохраните номер — он понадобится для проверки статуса.",
+        "registered": "✅ <b>Обращение зарегистрировано</b>\n\n<b>Номер:</b> <code>{code}</code>\n\nЕсли у вас есть доказательства, прикрепите фотографии, видео или документы — отправляйте их по одному. Если материалов нет или вы не хотите их отправлять, нажмите «Пропустить».\n\nСохраните номер — он понадобится для проверки статуса.",
         "file_added": "📎 Файл <b>{name}</b> прикреплён к обращению <code>{code}</code>.",
-        "file_help": "Отправьте фото, документ или видео. Поддерживаются JPG, PNG, WEBP, PDF, DOC, DOCX, MP4 и WEBM.\n\nКогда закончите, нажмите «Завершить».",
+        "file_help": "📎 <b>Материалы и доказательства (необязательно)</b>\n\nПри наличии отправьте фото, видео или документ. Можно отправлять несколько файлов по одному.\nПоддерживаются JPG, PNG, WEBP, PDF, DOC, DOCX, MP4 и WEBM.\n\nЕсли доказательств нет — нажмите «Пропустить».",
         "file_type": "Этот формат не поддерживается. Разрешены JPG, PNG, WEBP, PDF, DOC, DOCX, MP4 и WEBM.",
         "file_error": "Не удалось загрузить файл. Проверьте формат и размер, затем попробуйте ещё раз.",
         "file_server_error": "Сервер отклонил файл: {detail}",
@@ -94,7 +97,7 @@ TEXT: dict[str, dict[str, str]] = {
         "service_error": "Сервис временно недоступен. Попробуйте позже.",
         "cancelled": "Действие отменено. Вы вернулись в главное меню.",
         "choose_button": "Пожалуйста, воспользуйтесь кнопками меню.",
-        "finish": "Завершить приём файлов",
+        "finish": "Пропустить / Завершить",
         "status_names": {"new": "Новое", "review": "На рассмотрении", "referred": "Направлено", "need_info": "Требуется информация", "closed": "Закрыто"},
         "categories": [("Коррупция", "corruption"), ("Преступление", "crime"), ("Злоупотребление", "abuse"), ("Киберпреступление", "cybercrime"), ("Другое", "other")],
     },
@@ -118,9 +121,9 @@ TEXT: dict[str, dict[str, str]] = {
         "connection_error": "Серверге туташуу мүмкүн болгон жок. Кийинчерээк аракет кылыңыз. Кайрылуунун катталганы ырасталган жок.",
         "server_error": "Сервер кайрылууну кабыл алган жок. Кийинчерээк аракет кылыңыз.",
         "bad_response": "Сервер туура эмес жооп берди. Кайрылуунун катталганы ырасталган жок.",
-        "registered": "✅ <b>Кайрылуу катталды</b>\n\n<b>Номери:</b> <code>{code}</code>\n\nСүрөттөрдү, документтерди же видеолорду бирден жөнөтсөңүз болот. Бүткөндөн кийин «Аяктоо» баскычын басыңыз.\n\nНомерди сактап коюңуз — статусун текшерүү үчүн керек болот.",
+        "registered": "✅ <b>Кайрылуу катталды</b>\n\n<b>Номери:</b> <code>{code}</code>\n\nДалилдериңиз болсо, сүрөттөрдү, видеолорду же документтерди бирден жөнөтүңүз. Эгер материал жок болсо же жөнөткүңүз келбесе, «Өткөрүп жиберүү» баскычын басыңыз.\n\nНомерди сактап коюңуз — статусун текшерүү үчүн керек болот.",
         "file_added": "📎 <b>{name}</b> файлы <code>{code}</code> кайрылуусуна тиркелди.",
-        "file_help": "Сүрөт, документ же видео жөнөтүңүз. JPG, PNG, WEBP, PDF, DOC, DOCX, MP4 жана WEBM форматтары колдоого алынат.\n\nБүткөндөн кийин «Аяктоо» баскычын басыңыз.",
+        "file_help": "📎 <b>Материалдар жана далилдер (милдеттүү эмес)</b>\n\nМүмкүн болсо сүрөт, видео же документ жөнөтүңүз. Бир нече файлды бирден жөнөтсөңүз болот.\nJPG, PNG, WEBP, PDF, DOC, DOCX, MP4 жана WEBM форматтары колдоого алынат.\n\nДалил жок болсо — «Өткөрүп жиберүү» баскычын басыңыз.",
         "file_type": "Бул формат колдоого алынбайт. JPG, PNG, WEBP, PDF, DOC, DOCX, MP4 жана WEBM жөнөтүңүз.",
         "file_error": "Файл жүктөлгөн жок. Форматын жана өлчөмүн текшерип, кайра аракет кылыңыз.",
         "file_server_error": "Сервер файлды кабыл алган жок: {detail}",
@@ -132,7 +135,7 @@ TEXT: dict[str, dict[str, str]] = {
         "service_error": "Кызмат убактылуу жеткиликсиз. Кийинчерээк аракет кылыңыз.",
         "cancelled": "Аракет жокко чыгарылды. Башкы менюга кайттыңыз.",
         "choose_button": "Сураныч, менюдагы баскычтарды колдонуңуз.",
-        "finish": "Файлдарды кабыл алууну аяктоо",
+        "finish": "Өткөрүп жиберүү / Аяктоо",
         "status_names": {"new": "Жаңы", "review": "Каралууда", "referred": "Жөнөтүлдү", "need_info": "Кошумча маалымат керек", "closed": "Жабылды"},
         "categories": [("Коррупция", "corruption"), ("Кылмыш", "crime"), ("Кызмат абалынан кыянаттык", "abuse"), ("Киберкылмыштуулук", "cybercrime"), ("Башка", "other")],
     },
@@ -384,10 +387,7 @@ async def description(message: Message, state: FSMContext):
 
     await state.update_data(public_code=public_code, upload_token=upload_token, attachment_count=0)
     await state.set_state(Form.attachments)
-    await progress.edit_text(
-        TEXT[lang]["registered"].format(code=public_code),
-        reply_markup=attachment_keyboard(lang),
-    )
+    await progress.edit_text(TEXT[lang]["registered"].format(code=public_code))
     await message.answer(TEXT[lang]["file_help"], reply_markup=attachment_keyboard(lang))
 
 
@@ -410,23 +410,37 @@ async def upload_attachment(message: Message, state: FSMContext, bot: Bot):
     filename = None
     content_type = None
 
+    file_size = None
     if message.photo:
         photo = message.photo[-1]
+        file_size = photo.file_size
         file_id = photo.file_id
         filename = f"telegram_photo_{photo.file_unique_id}.jpg"
         content_type = "image/jpeg"
     elif message.document:
         doc = message.document
         file_id = doc.file_id
+        file_size = doc.file_size
         filename = doc.file_name or f"telegram_document_{doc.file_unique_id}"
         content_type = (doc.mime_type or "application/octet-stream").lower().split(";", 1)[0].strip()
     elif message.video:
         video = message.video
         file_id = video.file_id
+        file_size = video.file_size
         filename = video.file_name or f"telegram_video_{video.file_unique_id}.mp4"
         content_type = "video/mp4"
     else:
         await message.answer(TEXT[lang]["file_help"], reply_markup=attachment_keyboard(lang))
+        return
+
+    # Telegram cloud Bot API обычно позволяет скачать файл ботом размером до 20 МБ.
+    if file_size and file_size > 20 * 1024 * 1024:
+        size_warning = (
+            "Файл больше 20 МБ. Отправьте файл меньшего размера."
+            if lang == "ru"
+            else "Файл 20 МБдан чоң. Көлөмү азыраак файл жөнөтүңүз."
+        )
+        await message.answer(size_warning, reply_markup=attachment_keyboard(lang))
         return
 
     allowed = {
@@ -457,7 +471,7 @@ async def upload_attachment(message: Message, state: FSMContext, bot: Bot):
         count = int(data.get("attachment_count", 0)) + 1
         await state.update_data(attachment_count=count)
         await message.answer(
-            TEXT[lang]["file_added"].format(name=filename, code=public_code),
+            TEXT[lang]["file_added"].format(name=html.escape(filename), code=html.escape(public_code)),
             reply_markup=attachment_keyboard(lang),
         )
     except httpx.HTTPStatusError as exc:
@@ -467,7 +481,7 @@ async def upload_attachment(message: Message, state: FSMContext, bot: Bot):
             detail = body.get("detail", detail)
         except Exception:
             pass
-        await message.answer(TEXT[lang]["file_server_error"].format(detail=detail), reply_markup=attachment_keyboard(lang))
+        await message.answer(TEXT[lang]["file_server_error"].format(detail=html.escape(str(detail))), reply_markup=attachment_keyboard(lang))
     except Exception:
         await message.answer(TEXT[lang]["file_error"], reply_markup=attachment_keyboard(lang))
 
@@ -519,7 +533,7 @@ async def lookup_status(message: Message, state: FSMContext, code: str):
         status = str(result.get("status", "—"))
         status = TEXT[lang]["status_names"].get(status, status)
         await message.answer(
-            TEXT[lang]["status_result"].format(code=result.get("public_code", code), status=status),
+            TEXT[lang]["status_result"].format(code=html.escape(str(result.get("public_code", code))), status=html.escape(str(status))),
             reply_markup=main_menu_keyboard(lang),
         )
         await state.set_state(None)
@@ -568,12 +582,13 @@ async def cancel_callback(callback: CallbackQuery, state: FSMContext):
 # ============================================================
 
 async def main():
-    bot = Bot(token=TOKEN)
+    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
 
     # Commands
     dp.message.register(start, CommandStart())
     dp.message.register(cancel, Command("cancel"))
+    dp.message.register(show_menu, Command("menu"))
     dp.message.register(finish_attachments_command, Command("done"), Form.attachments)
     dp.message.register(status_command, Command("status"))
 
