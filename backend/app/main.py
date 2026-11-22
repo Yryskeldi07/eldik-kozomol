@@ -1,4 +1,5 @@
-﻿import secrets, string, os, uuid, hashlib, hmac, base64, json, mimetypes
+﻿import secrets, string, os, uuid, hashlib, hmac, base64, json, mimetypes, asyncio, urllib.request, urllib.error
+from urllib.parse import quote
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, Query, Header, UploadFile, File, Request
@@ -78,7 +79,6 @@ def startup():
         c.execute(text("ALTER TABLE reports ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()"))
         c.execute(text("ALTER TABLE reports ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'normal'"))
         c.execute(text("ALTER TABLE reports ADD COLUMN IF NOT EXISTS due_at TIMESTAMPTZ"))
-    UPLOAD_DIR.mkdir(parents=True,exist_ok=True)
     # Bootstrap one immutable owner account. Change the initial password immediately after first login.
     if settings.superadmin_password and len(settings.superadmin_password)>=14:
         from sqlalchemy import select
@@ -216,25 +216,114 @@ def add_note(code:str,p:dict,user:AdminUser=Depends(require_roles('operator')),d
     body=str(p.get('body','')).strip()
     if not body or len(body)>5000:raise HTTPException(400,'Ð—Ð°Ð¼ÐµÑ‚ÐºÐ° Ð´Ð¾Ð»Ð¶Ð½Ð° ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‚ÑŒ 1â€“5000 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²')
     r=find_report(db,code);db.add(InternalNote(report_id=r.id,author=user.username,body=body));audit(db,r,user.username,'Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð·Ð°Ð¼ÐµÑ‚ÐºÐ°','Ð”Ð¾Ð±Ð°Ð²Ð»ÐµÐ½Ð° Ð²Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð·Ð°Ð¼ÐµÑ‚ÐºÐ°');db.commit();return {'ok':True}
+def _supabase_storage_config():
+    supabase_url = os.getenv('SUPABASE_URL', '').strip().rstrip('/')
+    service_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()
+    bucket = os.getenv('SUPABASE_BUCKET', 'eldik-uploads').strip()
+    if not supabase_url or not service_key:
+        raise HTTPException(503, 'Supabase Storage не настроен: проверьте SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY')
+    return supabase_url, service_key, bucket
+
+
+def _storage_object_url(supabase_url: str, bucket: str, stored_name: str) -> str:
+    safe_bucket = quote(bucket, safe='')
+    safe_path = '/'.join(quote(part, safe='') for part in stored_name.split('/'))
+    return f'{supabase_url}/storage/v1/object/{safe_bucket}/{safe_path}'
+
+
+def _supabase_upload(data: bytes, stored_name: str, content_type: str) -> None:
+    supabase_url, service_key, bucket = _supabase_storage_config()
+    request = urllib.request.Request(
+        _storage_object_url(supabase_url, bucket, stored_name),
+        data=data,
+        headers={
+            'apikey': service_key,
+            'Authorization': f'Bearer {service_key}',
+            'Content-Type': content_type or 'application/octet-stream',
+            'x-upsert': 'false',
+        },
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            response.read()
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode('utf-8', errors='replace')[:1000]
+        raise HTTPException(502, f'Ошибка Supabase Storage при загрузке: {details}') from exc
+    except Exception as exc:
+        raise HTTPException(502, f'Не удалось связаться с Supabase Storage: {str(exc)[:300]}') from exc
+
+
+def _supabase_download(stored_name: str) -> bytes:
+    supabase_url, service_key, bucket = _supabase_storage_config()
+    request = urllib.request.Request(
+        _storage_object_url(supabase_url, bucket, stored_name),
+        headers={
+            'apikey': service_key,
+            'Authorization': f'Bearer {service_key}',
+        },
+        method='GET',
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise HTTPException(404, 'Файл отсутствует в Supabase Storage') from exc
+        details = exc.read().decode('utf-8', errors='replace')[:1000]
+        raise HTTPException(502, f'Ошибка Supabase Storage при скачивании: {details}') from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(502, f'Не удалось связаться с Supabase Storage: {str(exc)[:300]}') from exc
+
+
 @app.post('/api/v1/admin/reports/{code}/attachments')
 async def upload_attachment(code:str,file:UploadFile=File(...),user:AdminUser=Depends(require_roles('operator')),db:Session=Depends(get_db)):
     r=find_report(db,code)
     allowed={'image/jpeg','image/png','image/webp','application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'}
-    if file.content_type not in allowed:raise HTTPException(415,'Ð Ð°Ð·Ñ€ÐµÑˆÐµÐ½Ñ‹ JPG, PNG, WEBP, PDF, DOC Ð¸ DOCX')
+    if file.content_type not in allowed:
+        raise HTTPException(415,'Разрешены JPG, PNG, WEBP, PDF, DOC и DOCX')
     data=await file.read(settings.max_upload_mb*1024*1024+1)
-    if len(data)>settings.max_upload_mb*1024*1024:raise HTTPException(413,f'ÐœÐ°ÐºÑÐ¸Ð¼Ð°Ð»ÑŒÐ½Ñ‹Ð¹ Ñ€Ð°Ð·Ð¼ÐµÑ€ Ñ„Ð°Ð¹Ð»Ð°: {settings.max_upload_mb} ÐœÐ‘')
-    stored=f'{uuid.uuid4().hex}{Path(file.filename or "file").suffix.lower()[:10]}'
-    (UPLOAD_DIR/stored).write_bytes(data)
-    a=Attachment(report_id=r.id,original_name=Path(file.filename or 'file').name[:255],stored_name=stored,content_type=file.content_type,size=len(data),uploaded_by=user.username)
-    db.add(a);audit(db,r,user.username,'Ð’Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ',f'Ð—Ð°Ð³Ñ€ÑƒÐ¶ÐµÐ½ Ñ„Ð°Ð¹Ð»: {a.original_name}');db.commit()
+    if len(data)>settings.max_upload_mb*1024*1024:
+        raise HTTPException(413,f'Максимальный размер файла: {settings.max_upload_mb} МБ')
+    original_name=Path(file.filename or 'file').name[:255]
+    stored=f'{uuid.uuid4().hex}{Path(original_name).suffix.lower()[:10]}'
+    await asyncio.to_thread(_supabase_upload, data, stored, file.content_type or 'application/octet-stream')
+    try:
+        a=Attachment(report_id=r.id,original_name=original_name,stored_name=stored,content_type=file.content_type,size=len(data),uploaded_by=user.username)
+        db.add(a)
+        audit(db,r,user.username,'Вложение',f'Загружен файл: {a.original_name}')
+        db.commit()
+        db.refresh(a)
+    except Exception:
+        db.rollback()
+        # Do not leave an orphaned object if the database write fails.
+        try:
+            supabase_url, service_key, bucket = _supabase_storage_config()
+            delete_request = urllib.request.Request(
+                _storage_object_url(supabase_url, bucket, stored),
+                headers={'apikey': service_key, 'Authorization': f'Bearer {service_key}'},
+                method='DELETE',
+            )
+            await asyncio.to_thread(lambda: urllib.request.urlopen(delete_request, timeout=30).read())
+        except Exception:
+            pass
+        raise
     return {'id':a.id,'name':a.original_name}
+
+
 @app.get('/api/v1/admin/attachments/{attachment_id}')
-def download_attachment(attachment_id:str,user:AdminUser=Depends(require_roles('viewer')),db:Session=Depends(get_db)):
+async def download_attachment(attachment_id:str,user:AdminUser=Depends(require_roles('viewer')),db:Session=Depends(get_db)):
     a=db.get(Attachment,attachment_id)
-    if not a:raise HTTPException(404,'Ð¤Ð°Ð¹Ð» Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½')
-    path=UPLOAD_DIR/a.stored_name
-    if not path.exists():raise HTTPException(404,'Ð¤Ð°Ð¹Ð» Ð¾Ñ‚ÑÑƒÑ‚ÑÑ‚Ð²ÑƒÐµÑ‚ Ð² Ñ…Ñ€Ð°Ð½Ð¸Ð»Ð¸Ñ‰Ðµ')
-    return FileResponse(path,filename=a.original_name,media_type=a.content_type)
+    if not a:
+        raise HTTPException(404,'Файл не найден')
+    data=await asyncio.to_thread(_supabase_download, a.stored_name)
+    return Response(
+        content=data,
+        media_type=a.content_type or 'application/octet-stream',
+        headers={'Content-Disposition': f'attachment; filename="{quote(a.original_name)}"'}
+    )
 @app.get('/api/v1/admin/users')
 def users_list(user:AdminUser=Depends(require_roles('superadmin')),db:Session=Depends(get_db)):
     return [user_dict(u) for u in db.scalars(select(AdminUser).order_by(AdminUser.created_at)).all()]
