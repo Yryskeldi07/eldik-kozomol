@@ -72,6 +72,19 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 .notice{padding:12px;background:var(--soft);border-radius:10px;margin:12px 0}
 .role{font-weight:700}
 .footerhint{font-size:12px;color:var(--muted);margin-top:16px}
+
+.attachment-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px;margin-top:12px}
+.attachment-card{min-width:0;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.attachment-thumb{display:block;width:100%;height:130px;object-fit:cover;border-radius:8px;background:var(--bg);cursor:zoom-in}
+.attachment-name{font-size:12px;overflow-wrap:anywhere;margin:8px 0;color:var(--ink)}
+.attachment-actions{display:flex;gap:6px;flex-wrap:wrap}
+.attachment-actions button{font-size:12px;padding:7px 10px}
+.upload-hint,.upload-progress{font-size:12px;color:var(--muted);margin-top:8px;white-space:pre-wrap}
+.image-viewer{display:none;position:fixed;inset:0;z-index:30;background:#020711ed;align-items:center;justify-content:center;padding:24px}
+.image-viewer.open{display:flex}
+.image-viewer img{max-width:96vw;max-height:88vh;object-fit:contain}
+.image-viewer button{position:absolute;top:16px;right:16px}
+
 @media(max-width:1000px){
 .sidebar{position:static;width:auto;display:block}
 .sidefoot{display:none}
@@ -290,13 +303,19 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 </div>
 <div class="section">
 <h3>Документы и фотографии</h3>
-<input id="fileInput" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx">
-<button id="uploadFile" style="margin-top:8px">Загрузить файл</button>
-<div id="attachments"></div>
+<input id="fileInput" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx">
+<div class="upload-hint">Можно выбрать несколько фотографий и документов одновременно. Допустимые форматы: JPG, PNG, WEBP, PDF, DOC, DOCX.</div>
+<button id="uploadFile" type="button" style="margin-top:8px">Загрузить выбранные файлы</button>
+<div id="uploadProgress" class="upload-progress" aria-live="polite"></div>
+<div id="attachments" class="attachment-grid"></div>
 </div>
 <div class="section"><h3>История действий</h3><div id="history"></div></div>
 <div id="modalMsg" class="err"></div>
 </div>
+</div>
+<div id="imageViewer" class="image-viewer" role="dialog" aria-modal="true" aria-label="Просмотр фотографии">
+<button type="button" class="secondary" id="closeImageViewer">Закрыть ✕</button>
+<img id="imageViewerImg" alt="Увеличенное изображение">
 </div>
 
 <script>
@@ -465,28 +484,7 @@ d.textContent=dt(h.created_at)+' · '+h.actor+' · '+h.action+'\n'+h.details;
 $('history').append(d)
 }
 $('attachments').innerHTML='';
-for(let a of r.attachments){
-let d=document.createElement('div');
-d.className='listitem';
-let link=document.createElement('a');
-link.href='/api/v1/admin/attachments/'+a.id;
-link.textContent=a.name;
-link.style.color='var(--accent)';
-link.onclick=async e=>{
-e.preventDefault();
-try{
-let response=await fetch(link.href,{headers:{Authorization:'Bearer '+token}});
-if(!response.ok)throw Error('Не удалось скачать файл');
-let blob=await response.blob(),url=URL.createObjectURL(blob),ael=document.createElement('a');
-ael.href=url;
-ael.download=a.name;
-ael.click();
-URL.revokeObjectURL(url)
-}catch(err){$('modalMsg').textContent=err.message}
-};
-d.append(link,document.createTextNode(' · '+Math.round(a.size/1024)+' KB · '+dt(a.created_at)));
-$('attachments').append(d)
-}
+await renderAttachments(r.attachments||[]);
 $('modalbg').style.display='flex'
 }
 
@@ -526,17 +524,61 @@ await openReport(current)
 }catch(e){$('modalMsg').textContent=e.message}
 }
 
-async function uploadFile(){
-let f=$('fileInput').files[0];
-if(!f)return $('modalMsg').textContent='Выберите файл';
-let form=new FormData();
-form.append('file',f);
-try{
-await api('/api/v1/admin/reports/'+current+'/attachments',{method:'POST',body:form});
-$('fileInput').value='';
-await openReport(current)
-}catch(e){$('modalMsg').textContent=e.message}
+async function fetchAttachmentBlob(id){
+ const response=await fetch('/api/v1/admin/attachments/'+encodeURIComponent(id),{headers:{Authorization:'Bearer '+token}});
+ if(!response.ok)throw Error('Не удалось получить файл (HTTP '+response.status+')');
+ return await response.blob();
 }
+function isImageAttachment(name){return /\.(jpe?g|png|webp)$/i.test(name||'')}
+async function downloadAttachment(id,name){
+ const blob=await fetchAttachmentBlob(id),url=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=url;link.download=name||'attachment';document.body.append(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+async function renderAttachments(items){
+ const root=$('attachments');root.innerHTML='';
+ if(!items.length){root.className='';root.textContent='Вложений пока нет';return}
+ root.className='attachment-grid';
+ for(const item of items){
+  const card=document.createElement('div');card.className='attachment-card';
+  const name=document.createElement('div');name.className='attachment-name';name.textContent=item.name||'Файл';
+  if(isImageAttachment(item.name)){
+   const image=document.createElement('img');image.className='attachment-thumb';image.alt=item.name||'Фотография';image.loading='lazy';
+   image.onclick=()=>openImageViewer(image.src);card.append(image);
+   try{const blob=await fetchAttachmentBlob(item.id),url=URL.createObjectURL(blob);image.src=url;image.dataset.objectUrl=url}
+   catch(e){image.alt='Предпросмотр недоступен';image.style.cursor='default'}
+  }else{
+   const icon=document.createElement('div');icon.style.cssText='height:130px;display:flex;align-items:center;justify-content:center;background:var(--bg);border-radius:8px;font-size:38px';icon.textContent='📄';card.append(icon);
+  }
+  const meta=document.createElement('div');meta.className='muted';meta.style.fontSize='11px';meta.textContent=Math.max(1,Math.round((item.size||0)/1024))+' KB · '+dt(item.created_at);
+  const actions=document.createElement('div');actions.className='attachment-actions';
+  const download=document.createElement('button');download.type='button';download.className='secondary';download.textContent='Скачать';
+  download.onclick=async()=>{download.disabled=true;try{await downloadAttachment(item.id,item.name)}catch(e){$('modalMsg').textContent=e.message}finally{download.disabled=false}};
+  actions.append(download);card.append(name,meta,actions);root.append(card);
+ }
+}
+function openImageViewer(url){if(!url)return;$('imageViewerImg').src=url;$('imageViewer').classList.add('open')}
+function closeImageViewer(){$('imageViewer').classList.remove('open');$('imageViewerImg').src=''}
+async function uploadFile(){
+ const files=Array.from($('fileInput').files||[]);
+ if(!files.length){$('modalMsg').textContent='Выберите один или несколько файлов';return}
+ const maxBytes=10*1024*1024,allowed=/\.(jpe?g|png|webp|pdf|docx?)$/i;
+ const invalid=files.filter(f=>!allowed.test(f.name)||f.size>maxBytes);
+ if(invalid.length){$('modalMsg').textContent='Проверьте формат и размер (не более 10 МБ на файл): '+invalid.map(f=>f.name).join(', ');return}
+ const button=$('uploadFile');button.disabled=true;$('fileInput').disabled=true;$('modalMsg').textContent='';
+ let uploaded=0,failed=[];
+ for(let i=0;i<files.length;i++){
+  const file=files[i];$('uploadProgress').textContent='Загрузка '+(i+1)+' из '+files.length+': '+file.name;
+  const form=new FormData();form.append('file',file);
+  try{await api('/api/v1/admin/reports/'+encodeURIComponent(current)+'/attachments',{method:'POST',body:form});uploaded++}
+  catch(e){failed.push(file.name+': '+e.message)}
+ }
+ $('fileInput').value='';$('fileInput').disabled=false;button.disabled=false;
+ await openReport(current);
+ $('uploadProgress').textContent='Загружено: '+uploaded+' из '+files.length+(failed.length?'\nОшибки:\n'+failed.join('\n'):'');
+ if(failed.length)$('modalMsg').textContent='Некоторые файлы не удалось загрузить. Проверьте список ошибок.';
+}
+
 
 async function addStaff(){
 try{
@@ -735,6 +777,9 @@ $('clearFilters').onclick=()=>{
 loadReports()
 };
 $('close').onclick=()=>$('modalbg').style.display='none';
+$('closeImageViewer').onclick=closeImageViewer;
+$('imageViewer').onclick=e=>{if(e.target===$('imageViewer'))closeImageViewer()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeImageViewer()});
 if($('saveStatus'))$('saveStatus').onclick=saveStatus;
 $('saveWorkflow').onclick=saveWorkflow;
 $('saveAssignee').onclick=saveAssignment;
