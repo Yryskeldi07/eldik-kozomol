@@ -219,7 +219,11 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-.closed{color:var(--muted)}
+.closed{color:#b42318;background:#ffe5e5}[data-theme=dark] .closed{color:#ff9da7;background:#4a2026}
+.archive-banner{padding:14px 16px;border:1px solid #f0b7b7;background:#fff1f1;color:#8f1d24;border-radius:13px;margin-bottom:14px;line-height:1.45}
+[data-theme=dark] .archive-banner{background:#3b1d25;border-color:#71313c;color:#ffb4bc}
+.archive-row td{opacity:.92}.archive-row .badge.closed{font-weight:850}
+.archive-count{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;background:#ffe5e5;color:#b42318;font-size:11px;font-weight:800;margin-left:7px}
 
 
 
@@ -498,6 +502,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
+<div class="nav" data-page="archive">▣ &nbsp; Архив закрытых</div>
 <div class="nav" data-page="staff">♙ &nbsp; Исполнители</div>
 
 
@@ -664,10 +669,6 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-<option value="closed">Закрыто</option>
-
-
-
 </select>
 
 
@@ -791,6 +792,15 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
+
+<section id="archivePage" class="hidden">
+ <div class="archive-banner"><b>Архив закрытых обращений.</b> Все обращения со статусом «Закрыто» автоматически отображаются здесь и исключаются из основного рабочего списка. Просроченный срок закрытого обращения не подсвечивается как активная просрочка. Чтобы вернуть обращение в работу, откройте карточку и измените статус.</div>
+ <div class="panel">
+  <div class="row"><div><b>Архив обращений</b><div class="muted" id="archiveFound">Загрузка архива…</div></div><button class="secondary" id="refreshArchive" type="button">↻ Обновить архив</button></div>
+  <div class="filters" style="grid-template-columns:2fr 1fr auto"><input id="archiveSearch" placeholder="Поиск по номеру, категории, региону"><select id="archiveCategory"><option value="">Все категории</option><option value="corruption">Коррупция</option><option value="crime">Преступление</option><option value="abuse">Злоупотребление</option><option value="cybercrime">Киберпреступление</option><option value="other">Другое</option></select><button id="archiveFind" type="button">Найти</button></div>
+  <div class="tablewrap"><table><thead><tr><th>Номер</th><th>Категория</th><th>Регион / район</th><th>Ответственный</th><th>Приоритет</th><th>Срок</th><th>Дата поступления</th><th>Статус</th><th></th></tr></thead><tbody id="archiveRows"><tr><td colspan="9">Загрузка…</td></tr></tbody></table></div>
+ </div>
+</section>
 
 <section id="staffPage" class="hidden">
 
@@ -1787,7 +1797,7 @@ function deadlineInfo(value){
 }
 function updateDeadlinePreview(){
  const el=$('deadlinePreview');if(!el)return;
- const info=deadlineInfo($('dueAt').value);
+ const info=$('newStatus')?.value==='closed'?{label:'Обращение закрыто — контроль срока остановлен',cls:'deadline-ok'}:deadlineInfo($('dueAt').value);
  el.innerHTML='';const badge=document.createElement('span');badge.className='deadline-state '+info.cls;badge.textContent=info.label;el.append(badge);
 }
 function renderDeadlineCell(td,value){
@@ -1947,7 +1957,7 @@ tr.append(td)
 
 
 }
-if(r.due_at){const state=deadlineInfo(r.due_at).state;if(state==='overdue')tr.classList.add('row-overdue');else if(state==='urgent'||state==='soon')tr.classList.add('row-urgent')}
+if(r.due_at&&r.status!=='closed'){const state=deadlineInfo(r.due_at).state;if(state==='overdue')tr.classList.add('row-overdue');else if(state==='urgent'||state==='soon')tr.classList.add('row-urgent')}
 
 
 
@@ -1990,6 +2000,25 @@ $('rows').append(tr)
 
 
 
+
+async function loadArchive(){
+ try{
+  const q=new URLSearchParams({status:'closed'});
+  const data=await api('/api/v1/admin/reports?'+q);
+  const term=($('archiveSearch')?.value||'').trim().toLowerCase();
+  const category=$('archiveCategory')?.value||'';
+  const items=(data.items||[]).filter(r=>r.status==='closed'&&(!category||r.category===category)&&(!term||[r.public_code,r.description,r.region,r.district,r.assigned_staff_name,cats[r.category]].join(' ').toLowerCase().includes(term)));
+  $('archiveFound').textContent='В архиве: '+items.length+' · всего закрытых по ответу сервера: '+(data.total??items.length);
+  const root=$('archiveRows');root.innerHTML='';
+  if(!items.length){root.innerHTML='<tr><td colspan="9">Закрытых обращений не найдено</td></tr>';return;}
+  for(const r of items){
+   const tr=document.createElement('tr');tr.className='archive-row';
+   const vals=[r.public_code,cats[r.category]||r.category,[r.region,r.district].filter(Boolean).join(' / ')||'—',r.assigned_staff_name||'Не назначен',prio[r.priority]||r.priority,'',dt(r.created_at),'Закрыто'];
+   vals.forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i===0)td.className='code';if(i===5){const b=document.createElement('span');b.className='deadline-state deadline-ok';b.textContent=r.due_at?'Контроль остановлен':'Срок не устанавливался';td.append(b)}if(i===4){const b=document.createElement('span');b.className='badge '+(r.priority||'');b.textContent=v;td.textContent='';td.append(b)}if(i===7){const b=document.createElement('span');b.className='badge closed';b.textContent='ЗАКРЫТО · В АРХИВЕ';td.textContent='';td.append(b)}tr.append(td)});
+   const td=document.createElement('td'),btn=document.createElement('button');btn.className='secondary';btn.textContent='Открыть / восстановить';btn.onclick=()=>openReport(r.public_code);td.append(btn);tr.append(td);root.append(tr);
+  }
+ }catch(e){$('archiveFound').textContent='Не удалось загрузить архив: '+e.message;$('archiveRows').innerHTML='<tr><td colspan="9">Ошибка загрузки архива</td></tr>';}
+}
 
 async function loadStaff(){
 
@@ -3305,11 +3334,11 @@ async function page(p){
 
 
 
-for(let n of ['reports','staff','users','audit','settings','help'])$(n+'Page').classList.toggle('hidden',n!==p);
+for(let n of ['reports','archive','staff','users','audit','settings','help'])$(n+'Page').classList.toggle('hidden',n!==p);
 
 
 
-$('pageTitle').textContent={reports:'Обращения',staff:'Исполнители',users:'Администраторы и роли',audit:'Журнал системы',settings:'Настройки аккаунта',help:'Справка и безопасность'}[p];
+$('pageTitle').textContent={reports:'Обращения',archive:'Архив закрытых',staff:'Исполнители',users:'Администраторы и роли',audit:'Журнал системы',settings:'Настройки аккаунта',help:'Справка и безопасность'}[p];
 
 
 
@@ -3317,6 +3346,7 @@ document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.datas
 
 
 
+if(p==='archive')await loadArchive();
 if(p==='users'&&me.role==='superadmin')await loadUsers();
 
 
@@ -3371,6 +3401,10 @@ setupUploadDrop();
 
 
 $('find').onclick=loadReports;
+$('refreshArchive').onclick=loadArchive;
+$('archiveFind').onclick=loadArchive;
+$('archiveSearch').onkeydown=e=>{if(e.key==='Enter')loadArchive()};
+$('archiveCategory').onchange=loadArchive;
 
 
 
@@ -3431,6 +3465,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeImageViewer();
 
 
 $('dueAt').addEventListener('input',updateDeadlinePreview);
+$('newStatus').addEventListener('change',updateDeadlinePreview);
 document.querySelectorAll('[data-deadline-hours]').forEach(btn=>btn.addEventListener('click',()=>{const date=new Date(Date.now()+Number(btn.dataset.deadlineHours)*3600000);$('dueAt').value=localDateTimeValue(date);updateDeadlinePreview()}));
 $('clearDeadline').onclick=()=>{$('dueAt').value='';updateDeadlinePreview()};
 setInterval(updateLiveDeadlines,30000);
