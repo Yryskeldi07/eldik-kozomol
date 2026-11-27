@@ -1122,7 +1122,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-<button type="button" id="saveStatus" style="margin-top:8px">Сохранить статус</button>
+
 
 
 
@@ -1154,7 +1154,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-<div style="display:flex;align-items:end"><button id="saveWorkflow">Сохранить параметры</button></div>
+
 
 
 
@@ -1174,7 +1174,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-<div class="row"><select id="assignee"><option value="">Не назначен</option></select><button id="saveAssignee">Назначить</button></div>
+<div class="row"><select id="assignee"><option value="">Не назначен</option></select></div>
 
 
 
@@ -1198,7 +1198,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-<button id="addNote" style="margin-top:8px">Добавить заметку</button>
+
 
 
 
@@ -1226,7 +1226,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-<button id="uploadFile" type="button" style="margin-top:8px">Загрузить выбранные файлы</button>
+
 
 
 
@@ -1246,6 +1246,11 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
+
+<div class="section" style="position:sticky;bottom:0;background:#fff;padding:14px 0 8px;z-index:5;border-top:1px solid #dbe4f0">
+<button id="saveAllChanges" type="button" style="min-width:220px">Сохранить все изменения</button>
+<div id="saveAllProgress" class="muted" aria-live="polite" style="margin-top:8px"></div>
+</div>
 <div id="modalMsg" class="err"></div>
 
 
@@ -2294,9 +2299,9 @@ async function fetchAttachmentBlob(id){
 
 
 
-function isImageAttachment(name){return /\.(jpe?g|png|webp)$/i.test(name||'')}
+function isImageAttachment(name){return /\\.(jpe?g|png|webp)$/i.test(name||'')}
 
-function isVideoAttachment(name){return /\.(mp4|webm)$/i.test(name||'')}
+function isVideoAttachment(name){return /\\.(mp4|webm)$/i.test(name||'')}
 
 
 
@@ -2520,91 +2525,68 @@ function closeImageViewer(){$('imageViewer').classList.remove('open');$('imageVi
 
 
 
-async function uploadFile(){
-
-
-
- const files=Array.from($('fileInput').files||[]);
-
-
-
- if(!files.length){$('modalMsg').textContent='Выберите один или несколько файлов';return}
-
-
-
- const maxBytes=10*1024*1024,allowed=/\.(jpe?g|png|webp|pdf|docx?|mp4|webm)$/i;
-
-
-
- const invalid=files.filter(f=>!allowed.test(f.name)||f.size>maxBytes);
-
-
-
- if(invalid.length){$('modalMsg').textContent='Проверьте формат и размер (не более 10 МБ на файл): '+invalid.map(f=>f.name).join(', ');return}
-
-
-
- const button=$('uploadFile');button.disabled=true;$('fileInput').disabled=true;$('modalMsg').textContent='';
-
-
-
- let uploaded=0,failed=[];
-
-
-
- for(let i=0;i<files.length;i++){
-
-
-
-  const file=files[i];$('uploadProgress').textContent='Загрузка '+(i+1)+' из '+files.length+': '+file.name;
-
-
-
-  const form=new FormData();form.append('file',file);
-
-
-
-  try{await api('/api/v1/admin/reports/'+encodeURIComponent(current)+'/attachments',{method:'POST',body:form});uploaded++}
-
-
-
-  catch(e){failed.push(file.name+': '+e.message)}
-
-
-
- }
-
-
-
- $('fileInput').value='';$('fileInput').disabled=false;button.disabled=false;
-
-
-
- await openReport(current);
-
-
-
- $('uploadProgress').textContent='Загружено: '+uploaded+' из '+files.length+(failed.length?'\nОшибки:\n'+failed.join('\n'):'');
-
-
-
- if(failed.length)$('modalMsg').textContent='Некоторые файлы не удалось загрузить. Проверьте список ошибок.';
-
-
-
+async function uploadSelectedFiles(){
+ const files=Array.from($('fileInput').files||[]);
+ if(!files.length)return {uploaded:0,failed:[]};
+ const maxBytes=10*1024*1024,allowed=/\.(jpe?g|png|webp|pdf|docx?|mp4|webm)$/i;
+ const invalid=files.filter(f=>!allowed.test(f.name)||f.size>maxBytes);
+ if(invalid.length)throw new Error('Проверьте формат и размер (не более 10 МБ на файл): '+invalid.map(f=>f.name).join(', '));
+ let uploaded=0,failed=[];
+ for(let i=0;i<files.length;i++){
+  const file=files[i];
+  $('saveAllProgress').textContent='Загрузка файлов: '+(i+1)+' из '+files.length+' — '+file.name;
+  const form=new FormData();form.append('file',file);
+  try{await api('/api/v1/admin/reports/'+encodeURIComponent(current)+'/attachments',{method:'POST',body:form});uploaded++}
+  catch(e){failed.push(file.name+': '+e.message)}
+ }
+ if(!failed.length)$('fileInput').value='';
+ return {uploaded,failed};
 }
 
+async function saveAllChanges(){
+ if(!current)return;
+ const button=$('saveAllChanges');
+ button.disabled=true;
+ $('modalMsg').textContent='';
+ $('saveAllProgress').textContent='Сохраняем изменения…';
+ const completed=[];
+ try{
+  $('saveAllProgress').textContent='Сохраняем статус…';
+  await api('/api/v1/admin/reports/'+encodeURIComponent(current)+'/status',{method:'PATCH',body:JSON.stringify({status:$('newStatus').value})});
+  completed.push('статус');
 
+  $('saveAllProgress').textContent='Сохраняем приоритет и срок…';
+  const due=$('dueAt').value?new Date($('dueAt').value).toISOString():null;
+  await api('/api/v1/admin/reports/'+encodeURIComponent(current)+'/workflow',{method:'PATCH',body:JSON.stringify({priority:$('newPriority').value,due_at:due})});
+  completed.push('приоритет и срок');
 
+  $('saveAllProgress').textContent='Сохраняем исполнителя…';
+  await api('/api/v1/admin/reports/'+encodeURIComponent(current)+'/assignment',{method:'PATCH',body:JSON.stringify({staff_id:$('assignee').value||null})});
+  completed.push('исполнитель');
 
+  const note=$('noteBody').value.trim();
+  if(note){
+   $('saveAllProgress').textContent='Добавляем внутреннюю заметку…';
+   await api('/api/v1/admin/reports/'+encodeURIComponent(current)+'/notes',{method:'POST',body:JSON.stringify({body:note})});
+   $('noteBody').value='';completed.push('внутренняя заметка');
+  }
 
-
-
-
-
-
-
-async function addStaff(){
+  const result=await uploadSelectedFiles();
+  if(result.uploaded)completed.push('файлы ('+result.uploaded+')');
+  await openReport(current);
+  await loadReports();
+  if(result.failed.length){
+   $('saveAllProgress').textContent='Сохранено: '+completed.join(', ')+'. Не удалось загрузить: '+result.failed.join('; ');
+  }else{
+   $('saveAllProgress').textContent='✓ Все изменения сохранены'+(completed.length?' ('+completed.join(', ')+')':'')+'.';
+  }
+ }catch(e){
+  $('saveAllProgress').textContent='Операция остановлена: '+e.message+'. Уже сохранены: '+(completed.join(', ')||'нет')+'. Проверьте данные и нажмите сохранение ещё раз.';
+  try{await openReport(current);await loadReports()}catch(_){ }
+ }finally{
+  button.disabled=false;
+ }
+}async function addStaff(){
 
 
 
@@ -3404,25 +3386,27 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeImageViewer()})
 
 
 
-if($('saveStatus'))$('saveStatus').onclick=saveStatus;
 
 
 
-$('saveWorkflow').onclick=saveWorkflow;
 
 
 
-$('saveAssignee').onclick=saveAssignment;
 
 
 
-$('addNote').onclick=addNote;
 
 
 
-$('uploadFile').onclick=uploadFile;
 
 
+
+
+
+
+
+
+$('saveAllChanges').onclick=saveAllChanges;
 
 $('addStaff').onclick=addStaff;
 
