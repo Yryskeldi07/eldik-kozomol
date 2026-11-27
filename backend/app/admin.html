@@ -134,7 +134,28 @@ textarea{min-height:90px}
 
 
 
-.topright{display:flex;gap:9px;align-items:center}
+.topright{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+button:disabled{opacity:.55;cursor:not-allowed}
+button:focus-visible,.nav:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:2px}
+.nav{user-select:none}
+.upload-zone{border:1.5px dashed var(--line);border-radius:13px;padding:15px;background:var(--bg);transition:border-color .2s,background .2s}
+.upload-zone.dragover{border-color:var(--accent);background:var(--soft)}
+.upload-zone input{background:var(--surface)}
+.toolbar-status{font-size:12px;color:var(--muted);min-width:90px}
+.toast{position:fixed;right:22px;bottom:22px;z-index:80;max-width:min(420px,calc(100vw - 32px));padding:13px 16px;border-radius:12px;background:var(--nav);color:#fff;box-shadow:0 12px 35px #0003;opacity:0;transform:translateY(10px);pointer-events:none;transition:.2s}
+.toast.show{opacity:1;transform:translateY(0)}
+.report-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.kbd-hint{font-size:11px;color:var(--muted);margin-top:7px}
+
+.deadline-tools{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}
+.deadline-tools button{font-size:12px;padding:7px 10px}
+.deadline-help{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.45}
+.deadline-state{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:750;white-space:nowrap}
+.deadline-ok{background:#e8f7ef;color:#087443}.deadline-soon{background:#fff3d9;color:#925400}.deadline-urgent{background:#ffe8dc;color:#a43b08}.deadline-overdue{background:#ffe5e5;color:#b42318}
+[data-theme=dark] .deadline-ok{background:#123b2a;color:#8de0b4}[data-theme=dark] .deadline-soon{background:#493719;color:#ffd27a}[data-theme=dark] .deadline-urgent{background:#4b281c;color:#ffb18c}[data-theme=dark] .deadline-overdue{background:#4a2026;color:#ff9da7}
+tr.row-overdue td{background:color-mix(in srgb,#e5484d 9%,var(--surface))}tr.row-urgent td{background:color-mix(in srgb,#f59e0b 8%,var(--surface))}
+.history-timeline{display:grid;gap:10px;margin-top:12px}.history-item{position:relative;padding:13px 14px 13px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface);border-left:4px solid var(--accent)}.history-top{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}.history-action{font-weight:750}.history-time{font-size:11px;color:var(--muted)}.history-actor{font-size:12px;color:var(--muted);margin-top:5px}.history-details{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;margin-top:7px}.history-empty{padding:15px;border:1px dashed var(--line);border-radius:12px;color:var(--muted)}
+
 
 
 
@@ -246,7 +267,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-.modal{width:min(1000px,100%);max-height:94vh;overflow:auto;background:var(--surface);border-radius:18px;padding:23px;border:1px solid var(--line)}
+.modal{width:min(1100px,100%);max-height:94vh;overflow:auto;background:var(--surface);border-radius:18px;padding:23px;border:1px solid var(--line);box-shadow:0 24px 80px #0004;overscroll-behavior:contain}
 
 
 
@@ -298,19 +319,19 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-.attachment-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px;margin-top:12px}
+.attachment-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px;margin-top:14px;align-items:start}
 
 
 
-.attachment-card{min-width:0;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.attachment-card{min-width:0;padding:11px;border:1px solid var(--line);border-radius:14px;background:var(--surface);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.attachment-card:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--accent)}
 
 
 
-.attachment-thumb{display:block;width:100%;height:130px;object-fit:cover;border-radius:8px;background:var(--bg);cursor:zoom-in}
+.attachment-thumb{display:block;width:100%;height:160px;object-fit:contain;border-radius:10px;background:var(--bg);cursor:zoom-in}.attachment-thumb:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 
 
 
-.attachment-name{font-size:12px;overflow-wrap:anywhere;margin:8px 0;color:var(--ink)}
+.attachment-name{font-size:12px;line-height:1.4;overflow-wrap:anywhere;margin:9px 0;color:var(--ink);min-height:34px}.attachment-meta{font-size:11px;color:var(--muted);margin:5px 0 9px}.attachment-empty{padding:18px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);background:var(--bg)}.attachment-placeholder{height:160px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:var(--bg);border-radius:10px;color:var(--muted);font-size:34px}.attachment-placeholder small{font-size:11px}
 
 
 
@@ -334,7 +355,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-.image-viewer img{max-width:96vw;max-height:88vh;object-fit:contain}
+.image-viewer img{max-width:96vw;max-height:88vh;object-fit:contain;border-radius:10px;box-shadow:0 18px 60px #0008}
 
 
 
@@ -350,7 +371,12 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-.sidebar{position:static;width:auto;display:block}
+.sidebar{position:sticky;top:0;width:100%;height:auto;display:flex;flex-direction:row;align-items:center;gap:6px;padding:10px 12px;overflow-x:auto;white-space:nowrap}
+.brand{padding:5px 10px;min-width:max-content;font-size:16px}
+.brand small{display:none}
+.nav{flex:0 0 auto;margin:0;padding:10px 12px}
+.sidebar #logout{flex:0 0 auto;margin-left:auto}
+.sidefoot{display:none}
 
 
 
@@ -362,7 +388,9 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-.cards{grid-template-columns:repeat(2,1fr)}
+.cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+.topright{justify-content:flex-start}
+.top h1{font-size:21px}
 
 
 
@@ -527,6 +555,8 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 <button class="secondary" id="refresh">↻ Обновить</button>
+<button class="secondary" id="exportCsv" type="button">↓ Экспорт CSV</button>
+<span class="toolbar-status" id="lastUpdated" aria-live="polite">Данные ещё не обновлялись</span>
 
 
 
@@ -1150,7 +1180,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-<div><label>Срок исполнения</label><input id="dueAt" type="datetime-local"></div>
+
 
 
 
@@ -1175,10 +1205,10 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 <div class="row"><select id="assignee"><option value="">Не назначен</option></select></div>
-
-
-
+<div class="section" style="margin-top:12px"><label for="dueAt"><b>Срок исполнения назначенному исполнителю</b></label><input id="dueAt" type="datetime-local">
+<div class="deadline-tools"><button class="secondary" type="button" data-deadline-hours="1">+1 час</button><button class="secondary" type="button" data-deadline-hours="24">+24 часа</button><button class="secondary" type="button" data-deadline-hours="72">+3 дня</button><button class="secondary" type="button" data-deadline-hours="168">+7 дней</button><button class="danger" type="button" id="clearDeadline">Убрать срок</button></div><div class="deadline-help">Сначала выберите исполнителя, затем установите срок. Сохраните изменения кнопкой внизу карточки. Система выделит обращение, когда срок будет приближаться или уже истечёт.</div></div>
 <div id="assignmentMsg" class="muted"></div>
+<div id="deadlinePreview" class="deadline-help" aria-live="polite">Срок ещё не установлен.</div>
 
 
 
@@ -1218,7 +1248,7 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-<input id="fileInput" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.mp4,.webm,video/mp4,video/webm">
+<div class="upload-zone" id="uploadZone"><input id="fileInput" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.mp4,.webm,video/mp4,video/webm"><div class="upload-hint" id="fileSelectionInfo">Перетащите файлы сюда или выберите их кнопкой выше.</div><div class="kbd-hint">До 10 МБ на файл · Можно выбрать несколько файлов одновременно</div></div>
 
 
 
@@ -1242,12 +1272,12 @@ tr:hover td{background:color-mix(in srgb,var(--soft) 35%,transparent)}
 
 
 
-<div class="section"><h3>История действий</h3><div id="history"></div></div>
+<div class="section"><h3>История действий</h3><div class="deadline-help">Хронология изменений: дата и время, пользователь, выполненное действие и подробности.</div><div id="history" class="history-timeline"></div></div>
 
 
 
 
-<div class="section" style="position:sticky;bottom:0;background:#fff;padding:14px 0 8px;z-index:5;border-top:1px solid #dbe4f0">
+<div class="section" style="position:sticky;bottom:-23px;background:var(--surface);padding:14px 0 8px;z-index:5;border-top:1px solid var(--line)">
 <button id="saveAllChanges" type="button" style="min-width:220px">Сохранить все изменения</button>
 <div id="saveAllProgress" class="muted" aria-live="polite" style="margin-top:8px"></div>
 </div>
@@ -1291,7 +1321,7 @@ const $=id=>document.getElementById(id);
 
 
 
-let token=localStorage.getItem('ek_token')||'',me=null,current='',staff=[];
+let token=localStorage.getItem('ek_token')||'',me=null,current='',staff=[],refreshTimer=null,toastTimer=null;
 
 
 
@@ -1419,7 +1449,16 @@ const actionLabels={
 
 
 
- 'Удаление вложения':'Удаление вложения'
+ 'Удаление вложения':'Удаление вложения',
+ 'assignment':'Назначение исполнителя',
+ 'assigned':'Назначение исполнителя',
+ 'status_changed':'Изменение статуса',
+ 'deadline_changed':'Изменение срока исполнения',
+ 'due_date_changed':'Изменение срока исполнения',
+ 'note_added':'Добавление внутренней заметки',
+ 'attachment_uploaded':'Загрузка файла',
+ 'attachment_deleted':'Удаление файла',
+ 'priority_changed':'Изменение приоритета'
 
 
 
@@ -1619,9 +1658,8 @@ $('profileInfo').textContent=me.full_name+' · '+me.email+' · '+roles[me.role];
 
 
 
-await refresh()
-
-
+await refresh();
+ if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(()=>{if(token&&document.visibilityState==='visible')refresh()},60000);
 
 }catch(e){
 
@@ -1648,10 +1686,8 @@ $('app').style.display='none'
 
 
 function logout(){
-
-
-
-token='';
+ if(refreshTimer)clearInterval(refreshTimer);refreshTimer=null;
+ token='';
 
 
 
@@ -1719,11 +1755,10 @@ await loadStaff();
 
 
 
-await loadReports()
+await loadReports();
+ $('lastUpdated').textContent='Обновлено: '+new Date().toLocaleTimeString('ru-RU');
 
-
-
-}catch(e){console.error(e)}
+}catch(e){console.error(e);showToast('Не удалось обновить данные: '+e.message)}
 
 
 
@@ -1734,6 +1769,50 @@ await loadReports()
 
 
 
+
+function localDateTimeValue(date){
+ const pad=n=>String(n).padStart(2,'0');
+ return date.getFullYear()+'-'+pad(date.getMonth()+1)+'-'+pad(date.getDate())+'T'+pad(date.getHours())+':'+pad(date.getMinutes());
+}
+function deadlineInfo(value){
+ if(!value)return {label:'Срок не установлен',cls:'deadline-ok',state:'none'};
+ const ms=new Date(value).getTime()-Date.now();
+ if(!Number.isFinite(ms))return {label:'Некорректный срок',cls:'deadline-overdue',state:'invalid'};
+ const abs=Math.abs(ms),days=Math.floor(abs/86400000),hours=Math.floor(abs%86400000/3600000),mins=Math.floor(abs%3600000/60000);
+ const remain=(days?days+' дн. ':'')+(hours?hours+' ч. ':'')+mins+' мин.';
+ if(ms<0)return {label:'ПРОСРОЧЕНО на '+remain,cls:'deadline-overdue',state:'overdue'};
+ if(ms<=2*3600000)return {label:'СРОЧНО · осталось '+remain,cls:'deadline-urgent',state:'urgent'};
+ if(ms<=24*3600000)return {label:'Скоро срок · '+remain,cls:'deadline-soon',state:'soon'};
+ return {label:'Осталось '+remain,cls:'deadline-ok',state:'ok'};
+}
+function updateDeadlinePreview(){
+ const el=$('deadlinePreview');if(!el)return;
+ const info=deadlineInfo($('dueAt').value);
+ el.innerHTML='';const badge=document.createElement('span');badge.className='deadline-state '+info.cls;badge.textContent=info.label;el.append(badge);
+}
+function renderDeadlineCell(td,value){
+ td.innerHTML='';const info=deadlineInfo(value);const badge=document.createElement('span');badge.className='deadline-state '+info.cls;badge.textContent=value?dt(value):'Не установлен';td.append(badge);
+ if(value){const small=document.createElement('div');small.className='deadline-help due-live';small.dataset.deadline=value;small.textContent=info.label;td.append(small)}
+}
+function updateLiveDeadlines(){
+ document.querySelectorAll('.due-live[data-deadline]').forEach(el=>{const info=deadlineInfo(el.dataset.deadline);el.textContent=info.label;const badge=el.parentElement?.querySelector('.deadline-state');if(badge){badge.className='deadline-state '+info.cls;badge.textContent=dt(el.dataset.deadline)}const row=el.closest('tr');if(row){row.classList.toggle('row-overdue',info.state==='overdue');row.classList.toggle('row-urgent',info.state==='urgent'||info.state==='soon')}});
+ updateDeadlinePreview();
+}
+function renderHistory(history){
+ const root=$('history');root.innerHTML='';
+ if(!history||!history.length){root.className='history-timeline';const empty=document.createElement('div');empty.className='history-empty';empty.textContent='История пока пуста. Изменения статуса, срока, исполнителя и заметки будут отображаться здесь после сохранения.';root.append(empty);return;}
+ const sorted=[...history].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+ for(const h of sorted){
+  const item=document.createElement('article');item.className='history-item';
+  const top=document.createElement('div');top.className='history-top';
+  const action=document.createElement('div');action.className='history-action';action.textContent=displayAction(h.action||'Изменение');
+  const time=document.createElement('time');time.className='history-time';time.dateTime=h.created_at||'';time.textContent=dt(h.created_at);
+  top.append(action,time);
+  const actor=document.createElement('div');actor.className='history-actor';actor.textContent='Исполнитель действия: '+fixText(h.actor||h.username||'Система');
+  const details=document.createElement('div');details.className='history-details';details.textContent=displayDetails(h.details||h.description||'Подробности не указаны');
+  item.append(top,actor,details);root.append(item);
+ }
+}
 
 async function loadReports(){
 
@@ -1783,7 +1862,7 @@ let tr=document.createElement('tr');
 
 
 
-let vals=[r.public_code,cats[r.category]||r.category,[r.region,r.district].filter(Boolean).join(' / ')||'—',r.assigned_staff_name||'Не назначен',prio[r.priority]||r.priority,dt(r.due_at),dt(r.created_at),labels[r.status]||r.status];
+let vals=[r.public_code,cats[r.category]||r.category,[r.region,r.district].filter(Boolean).join(' / ')||'—',r.assigned_staff_name||'Не назначен',prio[r.priority]||r.priority,'',dt(r.created_at),labels[r.status]||r.status];
 
 
 
@@ -1800,6 +1879,10 @@ td.textContent=vals[i];
 
 
 if(i===0)td.className='code';
+
+
+
+if(i===5){renderDeadlineCell(td,r.due_at)}
 
 
 
@@ -1864,6 +1947,7 @@ tr.append(td)
 
 
 }
+if(r.due_at){const state=deadlineInfo(r.due_at).state;if(state==='overdue')tr.classList.add('row-overdue');else if(state==='urgent'||state==='soon')tr.classList.add('row-urgent')}
 
 
 
@@ -2007,11 +2091,12 @@ $('newPriority').value=r.priority||'normal';
 
 
 
-$('dueAt').value=r.due_at?new Date(r.due_at).toISOString().slice(0,16):'';
+$('dueAt').value=r.due_at?localDateTimeValue(new Date(r.due_at)):'';
 
 
 
 $('assignee').value=r.assigned_staff_id||'';
+updateDeadlinePreview();
 
 
 
@@ -2087,31 +2172,7 @@ $('notes').append(d)
 
 
 
-$('history').innerHTML='';
-
-
-
-for(let h of r.history){
-
-
-
-let d=document.createElement('div');
-
-
-
-d.className='listitem';
-
-
-
-d.textContent=dt(h.created_at)+' · '+fixText(h.actor)+' · '+displayAction(h.action)+'\n'+displayDetails(h.details);
-
-
-
-$('history').append(d)
-
-
-
-}
+renderHistory(r.history||[]);
 
 
 
@@ -2123,7 +2184,7 @@ await renderAttachments(r.attachments||[]);
 
 
 
-$('modalbg').style.display='flex'
+$('modalbg').style.display='flex';updateDeadlinePreview()
 
 
 
@@ -2299,9 +2360,24 @@ async function fetchAttachmentBlob(id){
 
 
 
-function isImageAttachment(name){return /\\.(jpe?g|png|webp)$/i.test(name||'')}
+function isImageAttachment(name){return /\.(jpe?g|png|webp)(?:$|[?#])/i.test(name||'')}
 
-function isVideoAttachment(name){return /\\.(mp4|webm)$/i.test(name||'')}
+function isVideoAttachment(name){return /\.(mp4|webm)(?:$|[?#])/i.test(name||'')}
+function attachmentKind(name){
+ const n=String(name||'').toLowerCase();
+ if(isImageAttachment(n))return 'Фотография';
+ if(isVideoAttachment(n))return 'Видео';
+ if(/\.pdf(?:$|[?#])/.test(n))return 'PDF-документ';
+ if(/\.docx?(?:$|[?#])/.test(n))return 'Документ Word';
+ return 'Файл';
+}
+function formatBytes(bytes){
+ const n=Number(bytes)||0;
+ if(n<1024)return n+' Б';
+ if(n<1024*1024)return (n/1024).toFixed(0)+' КБ';
+ return (n/1024/1024).toFixed(1)+' МБ';
+}
+
 
 
 
@@ -2382,146 +2458,69 @@ async function deleteAttachment(id,name){
 
 
 async function renderAttachments(items){
-
-
-
- const root=$('attachments');root.innerHTML='';
-
-
-
- if(!items.length){root.className='';root.textContent='Вложений пока нет';return}
-
-
-
- root.className='attachment-grid';
-
-
-
- for(const item of items){
-
-
-
-  const card=document.createElement('div');card.className='attachment-card';
-
-
-
-  const name=document.createElement('div');name.className='attachment-name';name.textContent=item.name||'Файл';
-
-
-
-  if(isImageAttachment(item.name)){
-
-
-
-   const image=document.createElement('img');image.className='attachment-thumb';image.alt=item.name||'Фотография';image.loading='lazy';
-
-
-
-   image.onclick=()=>openImageViewer(image.src);card.append(image);
-
-
-
-   try{const blob=await fetchAttachmentBlob(item.id),url=URL.createObjectURL(blob);image.src=url;image.dataset.objectUrl=url}
-
-
-
-   catch(e){image.alt='Предпросмотр недоступен';image.style.cursor='default'}}else if(isVideoAttachment(item.name)){
-
-    const video=document.createElement('video');video.className='attachment-thumb';video.controls=true;video.preload='metadata';
-
-    card.append(video);
-
-    try{const blob=await fetchAttachmentBlob(item.id),url=URL.createObjectURL(blob);video.src=url;video.dataset.objectUrl=url}
-
-    catch(e){video.replaceWith(document.createTextNode('Предпросмотр видео недоступен'))}
-
-   }else{
-
-    const icon=document.createElement('div');icon.style.cssText='height:130px;display:flex;align-items:center;justify-content:center;background:var(--bg);border-radius:8px;font-size:38px';icon.textContent='📄';card.append(icon);
-
-
-
-  }
-
-
-
-  const meta=document.createElement('div');meta.className='muted';meta.style.fontSize='11px';meta.textContent=Math.max(1,Math.round((item.size||0)/1024))+' KB · '+dt(item.created_at);
-
-
-
-  const actions=document.createElement('div');actions.className='attachment-actions';
-
-
-
-  const download=document.createElement('button');download.type='button';download.className='secondary';download.textContent='Скачать';
-
-
-
-  download.onclick=async()=>{download.disabled=true;try{await downloadAttachment(item.id,item.name)}catch(e){$('modalMsg').textContent=e.message}finally{download.disabled=false}};
-
-
-
-  actions.append(download);
-
-
-
-  if(can('operator')){
-
-
-
-   const remove=document.createElement('button');
-
-
-
-   remove.type='button';remove.className='danger';remove.textContent='Удалить';
-
-
-
-   remove.onclick=async()=>{
-
-
-
-    remove.disabled=true;
-
-
-
-    try{await deleteAttachment(item.id,item.name)}
-
-
-
-    finally{remove.disabled=false}
-
-
-
-   };
-
-
-
-   actions.append(remove);
-
-
-
-  }
-
-
-
-  card.append(name,meta,actions);root.append(card);
-
-
-
- }
-
-
-
+ const root=$('attachments');
+ root.querySelectorAll('[data-object-url]').forEach(el=>URL.revokeObjectURL(el.dataset.objectUrl));
+ root.innerHTML='';
+ if(!items.length){
+  root.className='';
+  const empty=document.createElement('div');empty.className='attachment-empty';
+  empty.textContent='📎 Вложений пока нет. Добавьте фотографии, документы или видео через поле выше.';
+  root.append(empty);return;
+ }
+ root.className='attachment-grid';
+ for(const item of items){
+  const card=document.createElement('article');card.className='attachment-card';
+  let kind=attachmentKind(item.name);let preview;
+  if(kind==='Фотография'){
+   const image=document.createElement('img');image.className='attachment-thumb';
+   image.alt=item.name||'Фотография';image.loading='lazy';image.decoding='async';image.tabIndex=0;
+   image.setAttribute('role','button');image.setAttribute('aria-label','Открыть фотографию: '+(item.name||'без названия'));
+   image.onclick=()=>openImageViewer(image.src);
+   image.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openImageViewer(image.src)}};
+   preview=image;
+  }else if(kind==='Видео'){
+   const video=document.createElement('video');video.className='attachment-thumb';
+   video.controls=true;video.preload='metadata';preview=video;
+  }else{
+   const box=document.createElement('div');box.className='attachment-placeholder';
+   box.textContent=kind==='PDF-документ'?'📕':kind==='Документ Word'?'📘':'📄';
+   const label=document.createElement('small');label.textContent=kind;box.append(label);preview=box;
+  }
+  card.append(preview);
+  const name=document.createElement('div');name.className='attachment-name';name.textContent=item.name||'Файл';
+  const meta=document.createElement('div');meta.className='attachment-meta';
+  meta.textContent=formatBytes(item.size)+' · '+dt(item.created_at);
+  const actions=document.createElement('div');actions.className='attachment-actions';
+  const download=document.createElement('button');download.type='button';download.className='secondary';download.textContent='Скачать';
+  download.onclick=async()=>{download.disabled=true;try{await downloadAttachment(item.id,item.name)}catch(e){$('modalMsg').textContent=e.message}finally{download.disabled=false}};
+  actions.append(download);
+  if(can('operator')){
+   const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='Удалить';
+   remove.onclick=async()=>{remove.disabled=true;try{await deleteAttachment(item.id,item.name)}finally{remove.disabled=false}};
+   actions.append(remove);
+  }
+  card.append(name,meta,actions);root.append(card);
+  if(kind==='Фотография'||kind==='Видео'){
+   try{
+    const blob=await fetchAttachmentBlob(item.id);
+    if(!blob.size)throw Error('Файл пустой');
+    if(blob.type&&blob.type.startsWith('image/')&&kind==='Файл'){kind='Фотография';const image=document.createElement('img');image.className='attachment-thumb';image.alt=item.name||'Фотография';image.loading='lazy';image.decoding='async';image.tabIndex=0;image.setAttribute('role','button');image.onclick=()=>openImageViewer(image.src);preview.replaceWith(image);preview=image;}
+    const url=URL.createObjectURL(blob);preview.src=url;preview.dataset.objectUrl=url;
+    if(kind==='Фотография'){
+     preview.onerror=()=>{preview.removeAttribute('src');preview.alt='Не удалось отобразить изображение. Попробуйте скачать файл.';preview.style.cursor='default'};
+    }else{
+     preview.onerror=()=>{preview.replaceWith(document.createTextNode('Предпросмотр видео недоступен — скачайте файл'))};
+    }
+   }catch(e){
+    const error=document.createElement('div');error.className='attachment-placeholder';error.textContent='⚠️';
+    const label=document.createElement('small');label.textContent='Предпросмотр недоступен';error.append(label);preview.replaceWith(error);
+   }
+  }
+ }
 }
+function openImageViewer(url){if(!url)return;$('imageViewerImg').src=url;$('imageViewer').classList.add('open');document.body.style.overflow='hidden';$('closeImageViewer').focus()}
 
-
-
-function openImageViewer(url){if(!url)return;$('imageViewerImg').src=url;$('imageViewer').classList.add('open')}
-
-
-
-function closeImageViewer(){$('imageViewer').classList.remove('open');$('imageViewerImg').src=''}
+function closeImageViewer(){$('imageViewer').classList.remove('open');$('imageViewerImg').src='';document.body.style.overflow=''}
 
 
 
@@ -2539,7 +2538,7 @@ async function uploadSelectedFiles(){
   try{await api('/api/v1/admin/reports/'+encodeURIComponent(current)+'/attachments',{method:'POST',body:form});uploaded++}
   catch(e){failed.push(file.name+': '+e.message)}
  }
- if(!failed.length)$('fileInput').value='';
+ if(!failed.length)$('fileInput').value='';updateFileSelection();
  return {uploaded,failed};
 }
 
@@ -3334,6 +3333,29 @@ if(p==='audit'&&me.role==='superadmin')await loadAudit()
 
 
 
+
+function showToast(message){
+ let el=$('appToast');if(!el){el=document.createElement('div');el.id='appToast';el.className='toast';el.setAttribute('role','status');el.setAttribute('aria-live','polite');document.body.append(el)}
+ el.textContent=message;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200);
+}
+function updateFileSelection(){
+ const files=Array.from($('fileInput').files||[]);const info=$('fileSelectionInfo');
+ if(info)info.textContent=files.length?`Выбрано файлов: ${files.length} · ${formatBytes(files.reduce((n,f)=>n+f.size,0))} — ${files.map(f=>f.name).join(', ')}`:'Перетащите файлы сюда или выберите их кнопкой выше.';
+}
+function exportReportsCsv(){
+ const table=document.querySelector('#reportsPage table');if(!table)return;
+ const rows=Array.from(table.querySelectorAll('tr')).map(tr=>Array.from(tr.querySelectorAll('th,td')).slice(0,-1).map(td=>'"'+td.innerText.replace(/"/g,'""').replace(/\s+/g,' ').trim()+'"'));
+ if(rows.length<2||rows[1].length===0){showToast('Нет данных для экспорта');return}
+ const csv='\uFEFF'+rows.map(r=>r.join(';')).join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='eldik-kozomol-obrashcheniya-'+new Date().toISOString().slice(0,10)+'.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast('Таблица обращений экспортирована в CSV');
+}
+function setupUploadDrop(){
+ const zone=$('uploadZone'),input=$('fileInput');if(!zone||!input)return;
+ ['dragenter','dragover'].forEach(type=>zone.addEventListener(type,e=>{e.preventDefault();zone.classList.add('dragover')}));
+ ['dragleave','drop'].forEach(type=>zone.addEventListener(type,e=>{e.preventDefault();zone.classList.remove('dragover')}));
+ zone.addEventListener('drop',e=>{if(e.dataTransfer?.files?.length){input.files=e.dataTransfer.files;updateFileSelection()}});
+ input.addEventListener('change',updateFileSelection);
+}
+
 $('loginBtn').onclick=login;
 
 
@@ -3343,6 +3365,8 @@ $('loginPassword').onkeydown=e=>{if(e.key==='Enter')login()};
 
 
 $('refresh').onclick=refresh;
+$('exportCsv').onclick=exportReportsCsv;
+setupUploadDrop();
 
 
 
@@ -3370,7 +3394,7 @@ loadReports()
 
 
 
-$('close').onclick=()=>$('modalbg').style.display='none';
+$('close').onclick=()=>{$('modalbg').style.display='none';$('attachments').querySelectorAll('[data-object-url]').forEach(el=>{URL.revokeObjectURL(el.dataset.objectUrl);delete el.dataset.objectUrl});closeImageViewer()};
 
 
 
@@ -3382,7 +3406,7 @@ $('imageViewer').onclick=e=>{if(e.target===$('imageViewer'))closeImageViewer()};
 
 
 
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeImageViewer()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeImageViewer();if($('modalbg').style.display==='flex')$('close').focus()}});
 
 
 
@@ -3406,6 +3430,10 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeImageViewer()})
 
 
 
+$('dueAt').addEventListener('input',updateDeadlinePreview);
+document.querySelectorAll('[data-deadline-hours]').forEach(btn=>btn.addEventListener('click',()=>{const date=new Date(Date.now()+Number(btn.dataset.deadlineHours)*3600000);$('dueAt').value=localDateTimeValue(date);updateDeadlinePreview()}));
+$('clearDeadline').onclick=()=>{$('dueAt').value='';updateDeadlinePreview()};
+setInterval(updateLiveDeadlines,30000);
 $('saveAllChanges').onclick=saveAllChanges;
 
 $('addStaff').onclick=addStaff;
