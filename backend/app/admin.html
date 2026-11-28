@@ -1192,29 +1192,39 @@ tr:hover td{background:#12304b!important}
 
 
 <section id="auditPage" class="hidden">
-
-
-
-<div class="panel">
-
-
-
-<h2>Журнал действий</h2>
-
-
-
-<p class="muted">Доступен только SUPERADMIN. Записи показывают операции по обращениям.</p>
-
-
-
-<div id="auditList"></div>
-
-
-
-</div>
-
-
-
+ <div class="audit-hero">
+  <div>
+   <div class="audit-eyebrow">ЦЕНТР АУДИТА · ELДИК КӨЗӨМӨЛ</div>
+   <h2>Журнал системы</h2>
+   <p>Единая хронология действий пользователей и операций с обращениями. Данные загружаются с сервера; фильтры применяются к загруженным записям.</p>
+  </div>
+  <div class="audit-toolbar">
+   <button class="secondary" id="auditRefresh" type="button">↻ Обновить</button>
+   <button class="secondary" id="auditExport" type="button">↓ Экспорт CSV</button>
+   <button class="secondary" id="auditPrint" type="button">⎙ Печать</button>
+  </div>
+ </div>
+ <div class="audit-stats" id="auditStats">
+  <div class="audit-stat"><span>Всего событий</span><b id="auditStatTotal">—</b><small>В загруженном журнале</small></div>
+  <div class="audit-stat"><span>За сегодня</span><b id="auditStatToday">—</b><small>По местному времени</small></div>
+  <div class="audit-stat"><span>Изменения статусов</span><b id="auditStatStatus">—</b><small>Смена этапа обращения</small></div>
+  <div class="audit-stat"><span>Файлы и вложения</span><b id="auditStatFiles">—</b><small>Загрузка и удаление</small></div>
+ </div>
+ <div class="panel audit-filter-panel">
+  <div class="audit-filter-head"><div><h3>Поиск и фильтрация</h3><p class="muted">Найдите действие по сотруднику, обращению или содержимому записи.</p></div><button class="secondary" id="auditReset" type="button">Сбросить фильтры</button></div>
+  <div class="audit-filters">
+   <label class="audit-search">Поиск<input id="auditSearch" type="search" placeholder="ФИО, логин, ID обращения, действие, детали…"></label>
+   <label>Тип события<select id="auditType"><option value="">Все события</option><option value="status">Изменение статуса</option><option value="assignment">Назначение исполнителя</option><option value="deadline">Сроки и приоритет</option><option value="file">Файлы и вложения</option><option value="note">Заметки и комментарии</option><option value="access">Входы и доступ</option><option value="other">Прочие действия</option></select></label>
+   <label>Период<select id="auditPeriod"><option value="all">За всё время</option><option value="today">Сегодня</option><option value="7">Последние 7 дней</option><option value="30">Последние 30 дней</option><option value="custom">Указать даты</option></select></label>
+   <label>С даты<input id="auditFrom" type="date" disabled></label>
+   <label>По дату<input id="auditTo" type="date" disabled></label>
+  </div>
+  <div class="audit-filter-foot"><span id="auditResultCount" class="muted" aria-live="polite">Загрузка журнала…</span><label class="audit-sort">Сортировка<select id="auditSort"><option value="desc">Сначала новые</option><option value="asc">Сначала старые</option></select></label></div>
+ </div>
+ <div class="audit-list-head"><div><h3>События</h3><p class="muted">Каждая запись содержит время, пользователя, тип операции и подробности.</p></div><span class="audit-live"><i></i> Журнал сервера</span></div>
+ <div id="auditList" class="audit-list" aria-live="polite"><div class="empty-state">Загрузка журнала…</div></div>
+ <div class="audit-pagination"><button class="secondary" id="auditPrev" type="button">← Назад</button><span id="auditPageInfo" class="muted">Страница 1</span><button class="secondary" id="auditNext" type="button">Вперёд →</button></div>
+ <p class="audit-security-note">Примечание: интерфейс не изменяет и не удаляет записи журнала. Неизменяемость аудита, фиксация IP/устройства и защита от удаления должны обеспечиваться сервером и базой данных.</p>
 </section>
 
 
@@ -1554,6 +1564,7 @@ const $=id=>document.getElementById(id);
 
 let token=localStorage.getItem('ek_token')||'',me=null,current='',staff=[],refreshTimer=null,toastTimer=null;
 let cachedReports=[],cachedStats=null,calendarCursor=new Date(),notificationsReadAt=localStorage.getItem('ek_notifications_read')||'';
+let auditEntries=[],auditPageNumber=1,auditPageSize=25;
 
 
 
@@ -1586,175 +1597,75 @@ const prio={low:'Низкий',normal:'Обычный',high:'Высокий',cri
 
 
 function fixText(value){
-
-
-
- if(value===null||value===undefined)return '';
-
-
-
- let s=String(value);
-
-
-
- if(!/[ÐÑÃâ]/.test(s))return s;
-
-
-
- const cp1252={8364:128,8218:130,402:131,8222:132,8230:133,8224:134,8225:135,710:136,8240:137,352:138,8249:139,338:140,381:142,8216:145,8217:146,8220:147,8221:148,8226:149,8211:150,8212:151,732:152,8482:153,353:154,8250:155,339:156,382:158,376:159};
-
-
-
- try{
-
-
-
-  const bytes=[];
-
-
-
-  for(const ch of s){
-
-
-
-   const code=ch.charCodeAt(0);
-
-
-
-   if(code<=255)bytes.push(code);
-
-
-
-   else if(cp1252[code]!==undefined)bytes.push(cp1252[code]);
-
-
-
-   else return s;
-
-
-
-  }
-
-
-
-  const decoded=new TextDecoder('utf-8',{fatal:true}).decode(new Uint8Array(bytes));
-
-
-
-  return /[А-Яа-яЁёҚқӨөҮүҢң]/.test(decoded)?decoded:s;
-
-
-
- }catch(_){return s}
-
-
-
+ if(value===null||value===undefined)return '';
+ let current=String(value);
+ const cp1252={8364:128,8218:130,402:131,8222:132,8230:133,8224:134,8225:135,710:136,8240:137,352:138,8249:139,338:140,381:142,8216:145,8217:146,8220:147,8221:148,8226:149,8211:150,8212:151,732:152,8482:153,353:154,8250:155,339:156,382:158,376:159};
+ const decodeAs=(s,encoding)=>{
+  try{
+   const bytes=[];
+   for(const ch of s){
+    const code=ch.charCodeAt(0);
+    if(code<=255)bytes.push(code);
+    else if(cp1252[code]!==undefined)bytes.push(cp1252[code]);
+    else return null;
+   }
+   return new TextDecoder(encoding,{fatal:true}).decode(new Uint8Array(bytes));
+  }catch(_){return null}
+ };
+ const repairSegment=segment=>{
+  if(!/[ÐÑÃÂâ€]/.test(segment))return segment;
+  let best=segment,bestScore=(segment.match(/[ÐÑÃÂâ€]/g)||[]).length*10;
+  for(const enc of ['utf-8','windows-1251']){
+   const candidate=decodeAs(segment,enc);
+   if(candidate===null||candidate===segment)continue;
+   const score=(candidate.match(/[ÐÑÃÂâ€ ]/g)||[]).length*10+(candidate.match(/[РС][А-Яа-яЁё]/g)||[]).length*12-(candidate.match(/[А-Яа-яЁёҚқӨөҮүҢң]/g)||[]).length*0.2;
+   if(score<bestScore){best=candidate;bestScore=score}
+  }
+  return best;
+ };
+ // Legacy rows may contain mojibake next to correctly encoded Cyrillic names.
+ for(let pass=0;pass<2;pass++){
+  const next=current.replace(/[^А-Яа-яЁёҚқӨөҮүҢң]+/g,repairSegment);
+  if(next===current)break;
+  current=next;
+ }
+ return current.replace(/\u0000/g,'').replace(/\uFFFD/g,' ');
 }
-
-
 
 const actionLabels={
-
-
-
- 'Изменение контрольного статуса':'Изменение контрольного статуса',
-
-
-
- 'Изменение статуса':'Изменение статуса',
-
-
-
- 'Изменение контрольного срока':'Изменение контрольного срока',
-
-
-
- 'Назначение исполнителя':'Назначение исполнителя',
-
-
-
- 'Изменение исполнителя':'Изменение исполнителя',
-
-
-
- 'Вложение':'Вложение',
-
-
-
- 'Удаление вложения':'Удаление вложения',
- 'assignment':'Назначение исполнителя',
- 'assigned':'Назначение исполнителя',
- 'status_changed':'Изменение статуса',
- 'deadline_changed':'Изменение срока исполнения',
- 'due_date_changed':'Изменение срока исполнения',
- 'note_added':'Добавление внутренней заметки',
- 'attachment_uploaded':'Загрузка файла',
- 'attachment_deleted':'Удаление файла',
- 'priority_changed':'Изменение приоритета'
-
-
-
+ 'Изменение контрольного статуса':'Изменение контрольного статуса',
+ 'Изменение статуса':'Изменение статуса',
+ 'Изменение контрольного срока':'Изменение контрольного срока',
+ 'Изменение срока исполнения':'Изменение срока исполнения',
+ 'Назначение исполнителя':'Назначение исполнителя',
+ 'Изменение исполнителя':'Изменение исполнителя',
+ 'Вложение':'Загрузка файла',
+ 'Удаление вложения':'Удаление файла',
+ 'assignment':'Назначение исполнителя','assigned':'Назначение исполнителя',
+ 'status_changed':'Изменение статуса','status_change':'Изменение статуса',
+ 'deadline_changed':'Изменение срока исполнения','due_date_changed':'Изменение срока исполнения',
+ 'note_added':'Добавление внутренней заметки','attachment_uploaded':'Загрузка файла',
+ 'attachment_deleted':'Удаление файла','priority_changed':'Изменение приоритета',
+ 'login':'Вход в систему','logout':'Выход из системы','failed_login':'Неудачная попытка входа',
+ 'user_created':'Создание учётной записи','user_updated':'Изменение учётной записи',
+ 'user_deleted':'Удаление учётной записи','role_changed':'Изменение роли пользователя'
 };
-
-
-
 function displayAction(value){
-
-
-
- const s=fixText(value);
-
-
-
- return actionLabels[s]||s;
-
-
-
+ const s=fixText(value).trim();
+ return actionLabels[s]||actionLabels[s.toLowerCase()]||s||'Действие не указано';
 }
-
-
-
 function displayDetails(value){
-
-
-
- let s=fixText(value);
-
-
-
- s=s.replace(/\bnew\b/g,'Новое')
-
-
-
-    .replace(/\breview\b/g,'На проверке')
-
-
-
-    .replace(/\breferred\b/g,'Передано')
-
-
-
-    .replace(/\bneed_info\b/g,'Нужна информация')
-
-
-
-    .replace(/\bclosed\b/g,'Закрыто')
-
-
-
-    .replace(/â‡’|â†’|â€™|→/g,' → ');
-
-
-
- return s;
-
-
-
+ let s=typeof value==='string'?fixText(value):value;
+ if(s&&typeof s==='object'){
+  try{s=Object.entries(s).map(([k,v])=>`${k}: ${typeof v==='object'?JSON.stringify(v):v}`).join('\n')}catch(_){s=String(s)}
+ }
+ s=String(s||'Подробности не указаны');
+ const translate={new:'Новое',review:'На проверке',referred:'Передано',need_info:'Нужна информация',closed:'Закрыто',low:'Низкий',normal:'Обычный',high:'Высокий',critical:'Критический'};
+ for(const [key,val] of Object.entries(translate))s=s.replace(new RegExp(`\\b${key}\\b`,'gi'),val);
+ s=s.replace(/(?:â‡’|â†’|â€™|â€º|→|->|=>)/g,' → ');
+ s=s.replace(/\bpriority:\s*/gi,'Приоритет: ').replace(/\bdue_at:\s*/gi,'Срок исполнения: ').replace(/\bstaff_id:\s*/gi,'ID исполнителя: ');
+ return s.trim();
 }
-
-
-
-
 
 
 
@@ -3480,42 +3391,150 @@ await loadUsers()
 
 
 
-async function loadAudit(){
-
-
-
-let a=await api('/api/v1/admin/audit');
-
-
-
-$('auditList').innerHTML='';
-
-
-
-for(let x of a){
-
-
-
-let d=document.createElement('div');
-
-
-
-d.className='listitem';
-
-
-
-d.textContent=dt(x.created_at)+' · '+fixText(x.actor)+' · '+displayAction(x.action)+' · '+x.report_id+'\n'+displayDetails(x.details);
-
-
-
-$('auditList').append(d)
-
-
-
+function auditCategory(entry){
+ const raw=String(entry.action||'').toLowerCase();
+ const action=displayAction(entry.action).toLowerCase();
+ if(/status|статус/.test(raw+' '+action))return 'status';
+ if(/assign|assigned|исполнител|назначен/.test(raw+' '+action))return 'assignment';
+ if(/deadline|due|срок|приоритет|priority|control|контрол/.test(raw+' '+action))return 'deadline';
+ if(/attachment|file|вложен|файл|загруз|удален/.test(raw+' '+action))return 'file';
+ if(/note|comment|замет|коммент/.test(raw+' '+action))return 'note';
+ if(/login|logout|auth|user|role|вход|выход|учётн|пользоват|доступ/.test(raw+' '+action))return 'access';
+ return 'other';
 }
-
-
-
+function auditCategoryLabel(type){
+ return ({status:'Статус обращения',assignment:'Исполнитель',deadline:'Сроки и приоритет',file:'Файлы и вложения',note:'Заметки и комментарии',access:'Учётные записи и доступ',other:'Прочие действия'})[type]||'Прочее';
+}
+function auditIcon(type){
+ return ({status:'⇄',assignment:'♙',deadline:'◷',file:'▤',note:'✎',access:'⌑',other:'•'})[type]||'•';
+}
+function auditDate(entry){
+ const d=new Date(entry.created_at||entry.timestamp||'');
+ return Number.isNaN(d.getTime())?null:d;
+}
+function auditFilteredEntries(){
+ const query=($('auditSearch')?.value||'').trim().toLocaleLowerCase('ru-RU');
+ const type=$('auditType')?.value||'',period=$('auditPeriod')?.value||'all';
+ const from=$('auditFrom')?.value||'',to=$('auditTo')?.value||'';
+ const now=new Date(),cutoff=new Date(now);
+ if(period==='today')cutoff.setHours(0,0,0,0);
+ else if(period==='7')cutoff.setDate(now.getDate()-7);
+ else if(period==='30')cutoff.setDate(now.getDate()-30);
+ let list=auditEntries.filter(x=>{
+  const category=auditCategory(x),date=auditDate(x);
+  if(type&&category!==type)return false;
+  if(period==='today'&&(!date||date<cutoff))return false;
+  if((period==='7'||period==='30')&&(!date||date<cutoff))return false;
+  if(period==='custom'){
+   if(from){const startDate=new Date(from+'T00:00:00');if(!date||date<startDate)return false}
+   if(to){const endDate=new Date(to+'T23:59:59.999');if(!date||date>endDate)return false}
+  }
+  if(query){
+   const hay=[x.actor,x.username,x.report_id,x.public_code,x.action,displayAction(x.action),x.details,x.description].map(v=>typeof v==='object'?JSON.stringify(v):String(v||'')).map(fixText).join(' ').toLocaleLowerCase('ru-RU');
+   if(!hay.includes(query))return false;
+  }
+  return true;
+ });
+ list.sort((a,b)=>{
+  const da=auditDate(a)?.getTime()||0,db=auditDate(b)?.getTime()||0;
+  return $('auditSort')?.value==='asc'?da-db:db-da;
+ });
+ return list;
+}
+function auditUpdateStats(){
+ const today=new Date();today.setHours(0,0,0,0);
+ const todayCount=auditEntries.filter(x=>{const d=auditDate(x);return d&&d>=today}).length;
+ const statusCount=auditEntries.filter(x=>auditCategory(x)==='status').length;
+ const fileCount=auditEntries.filter(x=>auditCategory(x)==='file').length;
+ $('auditStatTotal').textContent=auditEntries.length;
+ $('auditStatToday').textContent=todayCount;
+ $('auditStatStatus').textContent=statusCount;
+ $('auditStatFiles').textContent=fileCount;
+}
+function auditAppendChip(parent,label,value){
+ const chip=document.createElement('span');chip.className='audit-chip';
+ const b=document.createElement('b');b.textContent=label+':';
+ chip.append(b,document.createTextNode(' '+(value||'—')));parent.append(chip);
+}
+function renderAudit(){
+ const root=$('auditList');if(!root)return;
+ const filtered=auditFilteredEntries(),pages=Math.max(1,Math.ceil(filtered.length/auditPageSize));
+ auditPageNumber=Math.min(Math.max(1,auditPageNumber),pages);
+ const start=(auditPageNumber-1)*auditPageSize,visible=filtered.slice(start,start+auditPageSize);
+ $('auditResultCount').textContent=`Показано ${filtered.length?start+1:0}–${Math.min(start+auditPageSize,filtered.length)} из ${filtered.length} событий · всего загружено ${auditEntries.length}`;
+ $('auditPageInfo').textContent=`Страница ${auditPageNumber} из ${pages}`;
+ $('auditPrev').disabled=auditPageNumber<=1;$('auditNext').disabled=auditPageNumber>=pages;
+ root.innerHTML='';
+ if(!visible.length){
+  const empty=document.createElement('div');empty.className='audit-empty';
+  const title=document.createElement('b');title.textContent=auditEntries.length?'По заданным условиям ничего не найдено':'Журнал пока не содержит событий';
+  const hint=document.createElement('div');hint.style.marginTop='6px';hint.textContent=auditEntries.length?'Измените поисковый запрос или сбросьте фильтры.':'Когда сервер зарегистрирует действия пользователей, они появятся здесь.';
+  empty.append(title,hint);root.append(empty);return;
+ }
+ visible.forEach(x=>{
+  const type=auditCategory(x),card=document.createElement('article');card.className='audit-event audit-type-'+type;
+  const icon=document.createElement('div');icon.className='audit-event-icon';icon.setAttribute('aria-hidden','true');icon.textContent=auditIcon(type);
+  const main=document.createElement('div');main.className='audit-event-main';
+  const top=document.createElement('div');top.className='audit-event-top';
+  const title=document.createElement('div');title.className='audit-event-title';title.textContent=displayAction(x.action);
+  const time=document.createElement('time');time.className='audit-event-time';const date=auditDate(x);
+  time.dateTime=date?date.toISOString():'';time.textContent=date?date.toLocaleString('ru-RU',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'Время не указано';
+  top.append(title,time);
+  const meta=document.createElement('div');meta.className='audit-event-meta';
+  auditAppendChip(meta,'Пользователь',fixText(x.actor||x.username||'Система'));
+  auditAppendChip(meta,'Тип',auditCategoryLabel(type));
+  const reportId=x.public_code||x.report_id||x.report_uuid;
+  if(reportId)auditAppendChip(meta,'Обращение',String(reportId));
+  const details=document.createElement('div');details.className='audit-event-details';details.textContent=displayDetails(x.details||x.description||'Подробности операции сервером не переданы.');
+  const actions=document.createElement('div');actions.className='audit-event-actions';
+  if(reportId){
+   const copy=document.createElement('button');copy.type='button';copy.className='secondary';copy.textContent='Копировать номер';
+   copy.onclick=async()=>{try{await navigator.clipboard.writeText(String(reportId));showToast('Номер обращения скопирован')}catch(_){showToast('Не удалось скопировать номер')}};
+   actions.append(copy);
+  }
+  const raw=document.createElement('button');raw.type='button';raw.className='secondary';raw.textContent='Показать исходные поля';
+  const rawBox=document.createElement('pre');rawBox.className='audit-event-details';rawBox.hidden=true;rawBox.textContent=JSON.stringify(x,null,2);
+  raw.onclick=()=>{rawBox.hidden=!rawBox.hidden;raw.textContent=rawBox.hidden?'Показать исходные поля':'Скрыть исходные поля'};
+  actions.append(raw);
+  main.append(top,meta,details,actions,rawBox);card.append(icon,main);root.append(card);
+ });
+}
+async function loadAudit(){
+ const root=$('auditList');root.innerHTML='<div class="empty-state">Загружаем журнал с сервера…</div>';
+ $('auditResultCount').textContent='Получение данных…';
+ try{
+  const response=await api('/api/v1/admin/audit');
+  const rows=Array.isArray(response)?response:(Array.isArray(response.items)?response.items:(Array.isArray(response.events)?response.events:[]));
+  auditEntries=rows.map(x=>({...x,actor:fixText(x.actor||x.username||'Система'),action:fixText(x.action||'Действие'),details:typeof x.details==='string'?fixText(x.details):x.details}));
+  auditPageNumber=1;auditUpdateStats();renderAudit();
+ }catch(e){
+  root.innerHTML='';const error=document.createElement('div');error.className='audit-error';
+  const title=document.createElement('b');title.textContent='Не удалось загрузить журнал';
+  const msg=document.createElement('p');msg.textContent=fixText(e.message||'Неизвестная ошибка');msg.style.margin='7px 0 12px';
+  const retry=document.createElement('button');retry.type='button';retry.textContent='Повторить загрузку';retry.onclick=loadAudit;
+  error.append(title,msg,retry);root.append(error);
+  $('auditResultCount').textContent='Ошибка загрузки';
+  ['auditStatTotal','auditStatToday','auditStatStatus','auditStatFiles'].forEach(id=>$(id).textContent='—');
+ }
+}
+function auditCsvCell(value){
+ let s=String(value??'').replace(/[\r\n]+/g,' ').trim();
+ if(/^[=+\-@]/.test(s))s="'"+s;
+ return '"'+s.replace(/"/g,'""')+'"';
+}
+function exportAuditCsv(){
+ const rows=auditFilteredEntries();
+ if(!rows.length){showToast('Нет событий для экспорта');return}
+ const head=['Дата и время','Пользователь','Тип события','Действие','ID обращения','Подробности'];
+ const lines=[head,...rows.map(x=>[auditDate(x)?.toLocaleString('ru-RU')||'',x.actor||x.username||'Система',auditCategoryLabel(auditCategory(x)),displayAction(x.action),x.public_code||x.report_id||x.report_uuid||'',displayDetails(x.details||x.description||'')])];
+ const csv='\uFEFF'+lines.map(row=>row.map(auditCsvCell).join(';')).join('\r\n');
+ const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');
+ a.href=url;a.download='eldik-kozomol-audit-'+new Date().toISOString().slice(0,10)+'.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1200);
+ showToast('Отфильтрованный журнал экспортирован в CSV');
+}
+function resetAuditFilters(){
+ $('auditSearch').value='';$('auditType').value='';$('auditPeriod').value='all';$('auditFrom').value='';$('auditTo').value='';
+ $('auditFrom').disabled=true;$('auditTo').disabled=true;$('auditSort').value='desc';auditPageNumber=1;renderAudit();
 }
 
 
@@ -3731,7 +3750,50 @@ function printCurrentReport(){
  const code=$('mcode').textContent||current,desc=$('description').textContent||'',meta=Array.from($('meta').children).map(x=>`<tr><th>${escapePrint(x.querySelector('small')?.textContent)}</th><td>${escapePrint(x.querySelector('b')?.textContent)}</td></tr>`).join('');
  const history=Array.from($('history').children).filter(x=>x.classList.contains('history-item')).map(x=>`<li><b>${escapePrint(x.querySelector('.history-action')?.textContent)}</b><br>${escapePrint(x.querySelector('.history-time')?.textContent)} · ${escapePrint(x.querySelector('.history-actor')?.textContent)}<br>${escapePrint(x.querySelector('.history-details')?.textContent)}</li>`).join('');
  const w=window.open('','_blank','noopener,noreferrer,width=900,height=700');if(!w){showToast('Разрешите всплывающие окна для печати');return}
- w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Карточка ${escapePrint(code)}</title><style>body{font:14px Arial,sans-serif;color:#17243a;margin:32px}h1{font-size:22px}table{width:100%;border-collapse:collapse;margin:18px 0}th,td{text-align:left;border:1px solid #d8e0ea;padding:8px;vertical-align:top}th{width:28%;background:#f3f6fb}.desc{white-space:pre-wrap;line-height:1.5;border:1px solid #d8e0ea;padding:14px;border-radius:8px}li{margin:10px 0;line-height:1.5}.muted{color:#64748b}@media print{button{display:none}}</style></head><body><h1>Элдик Көзөмөл — карточка обращения</h1><p class="muted">Номер: ${escapePrint(code)} · Сформировано: ${escapePrint(new Date().toLocaleString('ru-RU'))}</p><h2>Основные сведения</h2><table>${meta}</table><h2>Описание</h2><div class="desc">${escapePrint(desc)}</div><h2>История действий</h2><ol>${history||'<li>История не содержит записей.</li>'}</ol><p class="muted">Внутренний документ. Соблюдайте установленный порядок обращения с персональными и конфиденциальными данными.</p><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
+ w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Карточка ${escapePrint(code)}</title><style>body{font:14px Arial,sans-serif;color:#17243a;margin:32px}h1{font-size:22px}table{width:100%;border-collapse:collapse;margin:18px 0}th,td{text-align:left;border:1px solid #d8e0ea;padding:8px;vertical-align:top}th{width:28%;background:#f3f6fb}.desc{white-space:pre-wrap;line-height:1.5;border:1px solid #d8e0ea;padding:14px;border-radius:8px}li{margin:10px 0;line-height:1.5}.muted{color:#64748b}@media print{button{display:none}}
+/* Audit Center — readable, responsive and accessible */
+.audit-hero{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;padding:24px;margin-bottom:15px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(120deg,color-mix(in srgb,var(--accent) 15%,var(--surface)),var(--surface) 68%);box-shadow:var(--shadow)}
+.audit-eyebrow{font-size:10px;font-weight:850;letter-spacing:1.5px;color:var(--accent);margin-bottom:8px}
+.audit-hero h2{font-size:25px;margin:0 0 7px}.audit-hero p{max-width:720px;margin:0;color:var(--muted);line-height:1.55}
+.audit-toolbar{display:flex;gap:8px;flex-wrap:wrap}
+.audit-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 15px}
+.audit-stat{padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);min-width:0}
+.audit-stat span,.audit-stat small{display:block;color:var(--muted);font-size:12px}.audit-stat b{display:block;font-size:27px;line-height:1.2;margin:8px 0 5px}
+.audit-filter-panel{margin-bottom:18px}.audit-filter-head,.audit-filter-foot,.audit-list-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.audit-filter-head h3,.audit-list-head h3{margin:0 0 4px}.audit-filter-head p,.audit-list-head p{margin:0}
+.audit-filters{display:grid;grid-template-columns:minmax(220px,2fr) repeat(4,minmax(130px,1fr));gap:10px;margin-top:16px}
+.audit-filters label{display:block;font-size:11px;font-weight:700;color:var(--muted)}
+.audit-filters input,.audit-filters select{margin-top:6px;min-width:0}
+.audit-filters input:disabled{opacity:.5;cursor:not-allowed}
+.audit-filter-foot{margin-top:12px}.audit-sort{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}.audit-sort select{width:auto;min-width:150px}
+.audit-list-head{margin:22px 2px 10px}.audit-live{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px}.audit-live i{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px color-mix(in srgb,var(--green) 15%,transparent)}
+.audit-list{display:grid;gap:10px}
+.audit-event{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr);gap:12px;padding:15px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);min-width:0}
+.audit-event-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:var(--soft);font-size:18px}
+.audit-event-main{min-width:0}.audit-event-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.audit-event-title{font-size:14px;font-weight:800;line-height:1.4;overflow-wrap:anywhere}
+.audit-event-time{font-size:11px;color:var(--muted);white-space:nowrap}
+.audit-event-meta{display:flex;gap:7px;flex-wrap:wrap;margin-top:7px}
+.audit-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:10px;max-width:100%;overflow-wrap:anywhere}
+.audit-chip b{color:var(--ink);font-weight:750}
+.audit-event-details{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--bg);line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+.audit-event-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.audit-event-actions button{font-size:11px;padding:6px 9px}
+.audit-type-status .audit-event-icon{background:#18385c;color:#8ccaff}
+.audit-type-assignment .audit-event-icon{background:#173d32;color:#8de0b4}
+.audit-type-deadline .audit-event-icon{background:#493719;color:#ffd27a}
+.audit-type-file .audit-event-icon{background:#342858;color:#c8b5ff}
+.audit-type-note .audit-event-icon{background:#173d48;color:#8ce7ed}
+.audit-type-access .audit-event-icon{background:#4a2026;color:#ffabb3}
+.audit-pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin:16px 0}
+.audit-pagination button{min-width:100px}.audit-security-note{font-size:11px;color:var(--muted);line-height:1.5;margin:14px 2px}
+.audit-error{padding:18px;border:1px solid color-mix(in srgb,var(--red) 40%,var(--line));border-radius:12px;background:color-mix(in srgb,var(--red) 8%,var(--surface));color:var(--ink)}
+.audit-empty{padding:28px 16px;text-align:center;border:1px dashed var(--line);border-radius:14px;color:var(--muted);background:var(--surface)}
+@media(max-width:1050px){.audit-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-search{grid-column:1/-1}}
+@media(max-width:700px){.audit-hero{display:block;padding:18px}.audit-toolbar{margin-top:15px}.audit-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.audit-stat{padding:13px}.audit-stat b{font-size:23px}.audit-filters{grid-template-columns:1fr}.audit-search{grid-column:auto}.audit-event{grid-template-columns:34px minmax(0,1fr);gap:9px;padding:11px}.audit-event-icon{width:32px;height:32px;font-size:15px}.audit-event-time{white-space:normal}.audit-sort{width:100%;justify-content:space-between}.audit-sort select{flex:1}}
+@media print{.sidebar,.top,.audit-toolbar,.audit-filter-panel,.audit-pagination,.audit-event-actions{display:none!important}.main{margin:0!important;padding:0!important}.audit-hero{box-shadow:none;background:#fff;color:#111}.audit-event,.audit-stat{box-shadow:none;break-inside:avoid}.audit-event-details{background:#f5f5f5}.audit-list{gap:6px}}
+
+</style></head><body><h1>Элдик Көзөмөл — карточка обращения</h1><p class="muted">Номер: ${escapePrint(code)} · Сформировано: ${escapePrint(new Date().toLocaleString('ru-RU'))}</p><h2>Основные сведения</h2><table>${meta}</table><h2>Описание</h2><div class="desc">${escapePrint(desc)}</div><h2>История действий</h2><ol>${history||'<li>История не содержит записей.</li>'}</ol><p class="muted">Внутренний документ. Соблюдайте установленный порядок обращения с персональными и конфиденциальными данными.</p><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
 }
 
 function markNotificationsRead(){notificationsReadAt=new Date().toISOString();localStorage.setItem('ek_notifications_read',notificationsReadAt);showToast('Список уведомлений отмечен как просмотренный')}
@@ -3767,6 +3829,19 @@ function setupUploadDrop(){
  input.addEventListener('change',updateFileSelection);
 }
 
+
+$('auditRefresh').onclick=loadAudit;
+$('auditExport').onclick=exportAuditCsv;
+$('auditPrint').onclick=()=>window.print();
+$('auditReset').onclick=resetAuditFilters;
+['auditSearch','auditType','auditSort'].forEach(id=>$(id).addEventListener(id==='auditSearch'?'input':'change',()=>{auditPageNumber=1;renderAudit()}));
+$('auditPeriod').addEventListener('change',()=>{
+ const custom=$('auditPeriod').value==='custom';
+ $('auditFrom').disabled=!custom;$('auditTo').disabled=!custom;auditPageNumber=1;renderAudit();
+});
+['auditFrom','auditTo'].forEach(id=>$(id).addEventListener('change',()=>{auditPageNumber=1;renderAudit()}));
+$('auditPrev').onclick=()=>{auditPageNumber=Math.max(1,auditPageNumber-1);renderAudit()};
+$('auditNext').onclick=()=>{auditPageNumber++;renderAudit()};
 
 $('calendarPrev').onclick=()=>{calendarCursor=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()-1,1);loadDeadlineCalendar()};
 $('calendarNext').onclick=()=>{calendarCursor=new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()+1,1);loadDeadlineCalendar()};
