@@ -1546,7 +1546,7 @@ tr:hover td{background:#12304b!important}
  <h3>⇢ Передать в другое подразделение</h3>
  <p class="transfer-intro">Передача оформляется как отдельное поручение. Текущий ответственный сохраняется до подтверждения принимающей стороной — так обращение не потеряется между подразделениями.</p>
  <div class="transfer-grid">
-  <div><label for="transferDepartment">Подразделение-получатель *</label><select id="transferDepartment"><option value="">Выберите подразделение</option><option value="СОП">СОП</option><option value="ГУУР">ГУУР</option><option value="СВР">СВР</option><option value="Академия МВД КР">Академия МВД КР</option><option value="Другое подразделение">Другое подразделение</option></select></div>
+  <div><label for="transferDepartment">Подразделение-получатель *</label><select id="transferDepartment"><option value="">Выберите подразделение</option><option value="СОБ">СОБ</option><option value="ГУУР">ГУУР</option><option value="СВР">СВР</option><option value="Академия МВД КР">Академия МВД КР</option><option value="Другое подразделение">Другое подразделение</option></select></div>
   <div><label for="transferStaff">Сотрудник-получатель</label><select id="transferStaff"><option value="">Назначить позже / подразделению</option></select></div>
   <div id="transferCustomWrap" class="wide hidden"><label for="transferCustomDepartment">Название другого подразделения *</label><input id="transferCustomDepartment" maxlength="160" placeholder="Укажите точное название подразделения"></div>
   <div><label for="transferType">Цель передачи</label><select id="transferType"><option value="execution">Передача на исполнение</option><option value="review">Рассмотрение по компетенции</option><option value="assistance">Запрос содействия</option><option value="joint">Совместная работа</option><option value="information">Направление информации</option></select></div>
@@ -2379,7 +2379,7 @@ $('staffList').append(d)
 function transferDepartmentAliases(name=''){
  const n=String(name||'').toLocaleLowerCase('ru').replace(/[ё]/g,'е').replace(/[.,]/g,' ').replace(/\s+/g,' ').trim();
  const groups={
-  'СОП':['соп'],
+  'СОБ':['соп'],
   'ГУУР':['гуур','гуур мвд','главное управление уголовного розыска'],
   'СВР':['свр'],
   'Академия МВД КР':['академия мвд кр','академия мвд','академия мвд кыргызской республики','академия мвд кыргызской республики имени генерал майора милиции алиева э а']
@@ -3711,6 +3711,16 @@ function auditProReportRefs(x){
 }
 function auditProFindReport(ref){const q=String(ref||'').trim().toLowerCase();if(!q)return null;return cachedReports.find(r=>[r.id,r.uuid,r.public_code,r.report_code,r.report_id].filter(Boolean).some(v=>String(v).toLowerCase()===q))||null}
 function auditProFiltered(){const q=($('auditSearch')?.value||'').trim().toLocaleLowerCase('ru-RU'),type=$('auditType')?.value||'',actor=$('auditActor')?.value||'',period=$('auditPeriod')?.value||'all',from=$('auditFrom')?.value||'',to=$('auditTo')?.value||'',now=new Date(),cut=new Date(now);if(period==='today')cut.setHours(0,0,0,0);else if(period==='7')cut.setDate(now.getDate()-7);else if(period==='30')cut.setDate(now.getDate()-30);return auditProEntries.filter(x=>{const d=auditProDate(x),t=auditProType(x);if(type&&t!==type)return false;if(actor&&auditProActor(x)!==actor)return false;if(period==='today'&&(!d||d<cut))return false;if((period==='7'||period==='30')&&(!d||d<cut))return false;if(period==='custom'){if(from&&(!d||d<new Date(from+'T00:00:00')))return false;if(to&&(!d||d>new Date(to+'T23:59:59.999')))return false}if(q){const hay=[auditProActor(x),auditProActionName(x),auditProPrettyDetails(auditProDetails(x)),auditProReportId(x),x.id,x.ip,x.ip_address,x.user_agent].map(v=>String(v??'')).join(' ').toLocaleLowerCase('ru-RU');if(!hay.includes(q))return false}return true}).sort((a,b)=>{const da=auditProDate(a)?.getTime()||0,db=auditProDate(b)?.getTime()||0;return $('auditSort')?.value==='asc'?da-db:db-da})}
+function auditProActors(){
+  const select=$('auditActor');
+  if(!select)return;
+  const selected=select.value;
+  const actors=[...new Set(auditProEntries.map(auditProActor).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b,'ru'));
+  select.replaceChildren(new Option('Все сотрудники',''));
+  actors.forEach(actor=>select.add(new Option(actor,actor)));
+  if(actors.includes(selected))select.value=selected;
+}
 function auditProStats(){
  const todayKey=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Bishkek'});
  const count=t=>auditProEntries.filter(x=>auditProType(x)===t).length;
