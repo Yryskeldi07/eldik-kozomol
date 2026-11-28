@@ -3732,6 +3732,51 @@ function auditProStats(){
  $('auditStatFiles').textContent=count('file');
  $('auditStatAccess').textContent=count('access')+count('security');
 }
+
+async function auditProOpenCase(ref){
+ const query=String(ref||'').trim();
+ const box=$('auditCaseResult');
+ if(!box)return;
+ if(!query){box.classList.remove('hidden');box.textContent='Введите номер обращения или UUID.';return}
+ box.classList.remove('hidden');
+ box.replaceChildren(auditProNode('div','audit-empty','Ищем события обращения в загруженном серверном журнале…'));
+ try{
+  if(!auditProEntries.length)await loadAudit();
+  const events=auditProEntries.filter(x=>auditProReportRefs(x).some(v=>v.toLowerCase()===query.toLowerCase()));
+  box.replaceChildren();
+  const head=auditProNode('div','audit-case-summary');
+  const title=auditProNode('div');
+  title.append(auditProNode('h4','',`Хронология обращения: ${query}`),
+    auditProNode('p','',`Найдено событий в загруженном журнале: ${events.length}`));
+  const actions=auditProNode('div','audit-case-actions');
+  const csv=auditProNode('button','secondary','Экспорт CSV');
+  csv.type='button';csv.disabled=!events.length;csv.onclick=()=>auditProExportCase(query,events);
+  const json=auditProNode('button','secondary','Экспорт JSON');
+  json.type='button';json.disabled=!events.length;json.onclick=()=>auditProExportCaseJson(query,events);
+  actions.append(csv,json);head.append(title,actions);box.append(head);
+  if(!events.length){
+   box.append(auditProNode('div','audit-empty','В текущем журнале нет событий с таким ID/номером обращения. Это не означает, что обращение отсутствует — серверный журнал должен содержать связанный report_id или public_code.'));
+   return;
+  }
+  const timeline=auditProNode('div','audit-case-timeline');
+  events.slice().sort((a,b)=>(auditProDate(a)?.getTime()||0)-(auditProDate(b)?.getTime()||0)).forEach((event,index)=>{
+   const step=auditProNode('article','audit-case-step');
+   const number=auditProNode('div','audit-case-stepno',String(index+1));
+   const body=auditProNode('div','audit-case-stepbody');
+   const top=auditProNode('div','audit-case-steptop');
+   top.append(auditProNode('b','',auditProActionName(event)),
+     auditProNode('time','',auditProWhen(auditProDate(event))));
+   body.append(top,
+     auditProNode('p','',auditProPrettyDetails(auditProDetails(event))),
+     auditProNode('small','',`Сотрудник: ${auditProActor(event)} · ${auditProTypeName(auditProType(event))}`));
+   step.append(number,body);timeline.append(step);
+  });
+  box.append(timeline);
+ }catch(error){
+  box.replaceChildren(auditProNode('div','audit-error',`Не удалось построить хронологию: ${auditProText(error.message||error)}`));
+ }
+}
+
 function auditProExportCaseJson(ref,events){if(!events?.length){showToast('Нет событий для экспорта');return}auditProDownload('eldik-case-history-'+String(ref).replace(/[^a-z0-9_-]/gi,'_')+'.json',JSON.stringify(events,null,2),'application/json;charset=utf-8');showToast('JSON истории подготовлен')}
 function auditProExportCase(ref,events){const rows=[['№','Дата и время','Сотрудник','Действие','Тип','Подробности','ID события'],...events.slice().sort((a,b)=>(auditProDate(a)?.getTime()||0)-(auditProDate(b)?.getTime()||0)).map((x,i)=>[i+1,auditProWhen(auditProDate(x)),auditProActor(x),auditProActionName(x),auditProTypeName(auditProType(x)),auditProPrettyDetails(auditProDetails(x)),x.id||''])];const csv='\uFEFF'+rows.map(r=>r.map(v=>auditProCsvCell(v)).join(';')).join('\r\n');auditProDownload('eldik-case-history-'+ref.replace(/[^a-z0-9_-]/gi,'_')+'.csv',csv,'text/csv;charset=utf-8')}
 function auditProCsvCell(v){let s=String(v??'').replace(/[\r\n]+/g,' ').trim();if(/^[=+\-@]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'}
