@@ -1553,7 +1553,7 @@ tr:hover td{background:#12304b!important}
   <div><label for="transferUnit">Управление / отдел / подразделение внутри адресата</label><input id="transferUnit" maxlength="160" placeholder="Например: профильное управление или отдел"></div>
   <div><label for="transferDue">Срок ответа / принятия</label><input id="transferDue" type="datetime-local"></div>
   <div><label for="transferPriority">Приоритет передачи</label><select id="transferPriority"><option value="normal">Обычный</option><option value="high">Высокий</option><option value="critical">Срочный</option></select></div>
-  <div class="wide"><label for="transferReason">Основание и что требуется от получателя *</label><textarea id="transferReason" placeholder="Укажите основание, уже выполненные действия, передаваемые материалы и конкретную задачу принимающей стороне…"></textarea></div>
+  <div class="wide"><label for="transferReason">Основание и что требуется от получателя *</label><textarea id="transferReason" maxlength="5000" placeholder="Укажите основание, уже выполненные действия, передаваемые материалы и конкретную задачу принимающей стороне…"></textarea></div>
  </div>
  <div class="transfer-actions"><button type="button" id="submitTransfer">Оформить передачу</button><button type="button" class="secondary" id="clearTransfer">Очистить форму</button></div>
  <div class="transfer-help">Обязательные поля: подразделение и основание передачи. Выбирайте только подразделения, с которыми у организации есть законное основание и согласованный канал взаимодействия. Передача, принятие или отклонение должны фиксироваться сервером в журнале аудита. Одна лишь запись в этой системе не заменяет официальную регистрацию в ведомственной системе адресата.</div>
@@ -1834,47 +1834,46 @@ const can=r=>({superadmin:6,admin:5,manager:4,operator:3,viewer:1}[me?.role]||0)
 
 
 async function api(path,opt={}){
-
-
-
-let h={...(opt.headers||{})};
-
-
-
-if(token)h.Authorization='Bearer '+token;
-
-
-
-if(opt.body&&!(opt.body instanceof FormData))h['Content-Type']='application/json';
-
-
-
-let r=await fetch(path,{...opt,headers:h});
-
-
-
-let d=await r.json().catch(()=>({}));
-
-
-
-if(r.status===401){logout();throw Error(d.detail||'Сеанс завершён')}
-
-
-
-if(!r.ok)throw Error(d.detail||('HTTP '+r.status));
-
-
-
-return d
-
-
-
+ const headers={...(opt.headers||{})};
+ if(token)headers.Authorization='Bearer '+token;
+ if(opt.body&&!(opt.body instanceof FormData))headers['Content-Type']='application/json';
+ const controller=new AbortController();
+ const externalSignal=opt.signal;
+ const timeoutMs=Number(opt.timeoutMs)||30000;
+ const timer=setTimeout(()=>controller.abort(new DOMException('Превышено время ожидания ответа сервера','TimeoutError')),timeoutMs);
+ if(externalSignal){
+  if(externalSignal.aborted)controller.abort(externalSignal.reason);
+  else externalSignal.addEventListener('abort',()=>controller.abort(externalSignal.reason),{once:true});
+ }
+ const requestOptions={...opt,headers,signal:controller.signal};
+ delete requestOptions.timeoutMs;
+ let response;
+ try{
+  response=await fetch(path,requestOptions);
+ }catch(error){
+  if(error.name==='AbortError'||error.name==='TimeoutError'){
+   throw Error('Сервер не ответил вовремя. Проверьте соединение и повторите попытку.');
+  }
+  throw Error('Не удалось связаться с сервером. Проверьте интернет-соединение и доступность backend.');
+ }finally{
+  clearTimeout(timer);
+ }
+ const contentType=response.headers.get('content-type')||'';
+ let data;
+ if(contentType.includes('application/json')){
+  data=await response.json().catch(()=>({detail:'Сервер вернул некорректный JSON'}));
+ }else{
+  const body=await response.text().catch(()=> '');
+  data={detail:body.slice(0,500)||('Сервер вернул ответ без JSON (HTTP '+response.status+')')};
+ }
+ if(response.status===401){
+  logout();
+  throw Error(data.detail||'Сеанс завершён. Войдите в систему повторно.');
+ }
+ if(response.status===403)throw Error(data.detail||'Недостаточно прав для выполнения этого действия.');
+ if(!response.ok)throw Error(data.detail||('Ошибка сервера: HTTP '+response.status));
+ return data;
 }
-
-
-
-
-
 
 
 async function login(){
@@ -2410,9 +2409,17 @@ async function submitTransfer(){
  if(!current)return;const selected=$('transferDepartment').value,custom=$('transferCustomDepartment').value.trim(),department=selected==='Другое подразделение'?custom:selected,reason=$('transferReason').value.trim();
  if(!department||!reason){$('transferMessage').textContent='Выберите подразделение-получателя и укажите основание передачи.';return;}
  if(selected==='Другое подразделение'&&!custom){$('transferMessage').textContent='Укажите точное название другого подразделения.';return;}
+ if(reason.length>5000){$('transferMessage').textContent='Основание передачи не должно превышать 5000 символов.';return;}
+ if(department.length>160){$('transferMessage').textContent='Название подразделения не должно превышать 160 символов.';return;}
+ const dueValue=$('transferDue').value;
+ if(dueValue){
+  const parsedDue=new Date(dueValue);
+  if(Number.isNaN(parsedDue.getTime())){$('transferMessage').textContent='Укажите корректную дату и время срока.';return;}
+  if(parsedDue.getTime()<Date.now()-60000){$('transferMessage').textContent='Срок передачи не может быть в прошлом.';return;}
+ }
  const button=$('submitTransfer');button.disabled=true;$('transferMessage').textContent='Оформляем передачу…';
  try{
-  const due=$('transferDue').value?new Date($('transferDue').value).toISOString():null;
+  const due=dueValue?new Date(dueValue).toISOString():null;
   const payload={to_department:department,destination_department:department,department_code:selected,to_staff_id:$('transferStaff').value||null,destination_staff_id:$('transferStaff').value||null,due_at:due,priority:$('transferPriority').value,transfer_type:$('transferType').value,receiving_unit:$('transferUnit').value.trim()||null,reason};
   await api('/api/v1/admin/reports/'+encodeURIComponent(current)+'/transfers',{method:'POST',body:JSON.stringify(payload)});
   $('transferMessage').textContent='Передача зарегистрирована. До подтверждения принимающей стороной текущая ответственность сохраняется. Проверьте статус в истории передач.';

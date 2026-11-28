@@ -10,16 +10,55 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, func, text, or_
 from .config import settings
 from .db import Base, engine, get_db, SessionLocal
-from .models import Report, Status, Staff, AuditEvent, InternalNote, AdminUser, Attachment
+from .models import Report, Status, Staff, AuditEvent, InternalNote, AdminUser, Attachment, InteragencyTransfer
 from .schemas import ReportCreate, ReportCreated, StatusUpdate, StaffCreate, AssignmentUpdate, NoteCreate
 
-app=FastAPI(title='Ð­Ð»Ð´Ð¸Ðº ÐšÓ©Ð·Ó©Ð¼Ó©Ð» API',version='2.0.0',description='ÐÐµÐ·Ð°Ð²Ð¸ÑÐ¸Ð¼Ð°Ñ ÑÐ¸ÑÑ‚ÐµÐ¼Ð° ÑƒÑ‡Ñ‘Ñ‚Ð° ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ð¹. ÐÐµ ÑÐ²Ð»ÑÐµÑ‚ÑÑ Ð³Ð¾ÑÑƒÐ´Ð°Ñ€ÑÑ‚Ð²ÐµÐ½Ð½Ð¾Ð¹ Ð¿Ñ€Ð¸Ñ‘Ð¼Ð½Ð¾Ð¹.')
+app=FastAPI(title='Элдик Көзөмөл API',version='3.0.0',description='Система учёта обращений и внутреннего контроля. Не является государственной приёмной.')
 origins=[x.strip() for x in settings.cors_origins.split(',') if x.strip()]
 app.add_middleware(CORSMiddleware,allow_origins=origins,allow_methods=['GET','POST','PATCH','DELETE'],allow_headers=['Authorization','Content-Type','X-Actor-Name'])
 security=HTTPBearer(auto_error=False)
 ROLES={'superadmin':6,'admin':5,'manager':4,'operator':3,'viewer':1}
-ROLE_LABELS={'superadmin':'Ð¡ÑƒÐ¿ÐµÑ€Ð°Ð´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€','admin':'ÐÐ´Ð¼Ð¸Ð½Ð¸ÑÑ‚Ñ€Ð°Ñ‚Ð¾Ñ€','manager':'Ð ÑƒÐºÐ¾Ð²Ð¾Ð´Ð¸Ñ‚ÐµÐ»ÑŒ','operator':'ÐžÐ¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€','viewer':'ÐÐ°Ð±Ð»ÑŽÐ´Ð°Ñ‚ÐµÐ»ÑŒ'}
+ROLE_LABELS={'superadmin':'Суперадминистратор','admin':'Администратор','manager':'Руководитель','operator':'Оператор','viewer':'Наблюдатель'}
 UPLOAD_DIR=Path(settings.upload_dir)
+
+def _detect_file_type(data: bytes) -> str | None:
+    """Detect supported file formats from their signatures, not browser MIME metadata."""
+    if data.startswith(b"\xff\xd8\xff"): return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"): return "image/png"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP": return "image/webp"
+    if data.startswith(b"%PDF-"): return "application/pdf"
+    if data.startswith(b"PK\x03\x04"):
+        # DOCX is a ZIP container; require the standard Word document entry.
+        import zipfile, io
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                names=set(z.namelist())
+                if "[Content_Types].xml" in names and "word/document.xml" in names:
+                    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        except Exception:
+            return None
+    # Legacy DOC compound-file signature.
+    if data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"): return "application/msword"
+    if len(data) >= 12 and data[4:8] == b"ftyp": return "video/mp4"
+    if data.startswith(b"\x1a\x45\xdf\xa3"): return "video/webm"
+    return None
+
+ALLOWED_UPLOAD_TYPES={
+    "image/jpeg","image/png","image/webp","application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "video/mp4","video/webm",
+}
+
+def validate_upload(data: bytes, claimed_type: str, max_bytes: int) -> str:
+    if not data: raise HTTPException(400, "Файл пустой")
+    if len(data)>max_bytes: raise HTTPException(413, f"Максимальный размер файла: {settings.max_upload_mb} МБ")
+    detected=_detect_file_type(data)
+    if detected not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(415, "Формат файла не поддерживается или содержимое не соответствует формату")
+    if claimed_type and claimed_type.split(';',1)[0].strip().lower() not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(415, "Тип файла не разрешён")
+    return detected
 
 def now(): return datetime.now(timezone.utc)
 def iso(v): return v.isoformat() if v else None
@@ -46,23 +85,23 @@ def decode_token(token:str):
         payload=json.loads(base64.urlsafe_b64decode(raw+'='*((4-len(raw)%4)%4)))
         if int(payload['exp'])<int(now().timestamp()):raise ValueError()
         return payload
-    except Exception: raise HTTPException(401,'Ð¡ÐµÐ°Ð½Ñ Ð¸ÑÑ‚Ñ‘Ðº. Ð’Ð¾Ð¹Ð´Ð¸Ñ‚Ðµ ÑÐ½Ð¾Ð²Ð°.')
+    except Exception: raise HTTPException(401,'Сеанс истёк. Войдите снова.')
 
 def current_user(credentials:HTTPAuthorizationCredentials|None=Depends(security),db:Session=Depends(get_db)):
-    if not credentials: raise HTTPException(401,'Ð’Ð¾Ð¹Ð´Ð¸Ñ‚Ðµ Ð² ÑÐ¸ÑÑ‚ÐµÐ¼Ñƒ')
+    if not credentials: raise HTTPException(401,'Войдите в систему')
     payload=decode_token(credentials.credentials)
     user=db.get(AdminUser,payload.get('sub'))
-    if not user or not user.active: raise HTTPException(401,'Ð£Ñ‡Ñ‘Ñ‚Ð½Ð°Ñ Ð·Ð°Ð¿Ð¸ÑÑŒ Ð¾Ñ‚ÐºÐ»ÑŽÑ‡ÐµÐ½Ð°')
+    if not user or not user.active: raise HTTPException(401,'Учётная запись отключена')
     return user
 def require_roles(*roles):
     def dep(user:AdminUser=Depends(current_user)):
-        if ROLES.get(user.role,0)<min(ROLES[r] for r in roles): raise HTTPException(403,'ÐÐµÐ´Ð¾ÑÑ‚Ð°Ñ‚Ð¾Ñ‡Ð½Ð¾ Ð¿Ñ€Ð°Ð²')
+        if ROLES.get(user.role,0)<min(ROLES[r] for r in roles): raise HTTPException(403,'Недостаточно прав')
         return user
     return dep
 def make_code(): return 'EK-'+''.join(secrets.choice(string.ascii_uppercase+string.digits) for _ in range(10))
 def find_report(db,code):
     r=db.scalar(select(Report).where(Report.public_code==code))
-    if not r: raise HTTPException(404,'ÐžÐ±Ñ€Ð°Ñ‰ÐµÐ½Ð¸Ðµ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ð¾')
+    if not r: raise HTTPException(404,'Обращение не найдено')
     return r
 def audit(db,r,who,action,details):
     db.add(AuditEvent(report_id=r.id,actor=who,action=action,details=details))
@@ -126,12 +165,12 @@ def public_config(): return Response("window.ELDIK_API_BASE = window.location.or
 @app.get('/admin/',include_in_schema=False)
 def admin_page(): return FileResponse(Path(__file__).with_name('admin.html'))
 @app.get('/health')
-def health(): return {'status':'ok','service':'eldik-kozomol-api','version':'2.0.0'}
+def health(): return {'status':'ok','service':'eldik-kozomol-api','version':'3.0.0'}
 @app.post('/api/v1/auth/login')
 def login(p:dict,db:Session=Depends(get_db)):
     ident=str(p.get('username','')).strip().lower(); password=str(p.get('password',''))
     user=db.scalar(select(AdminUser).where(or_(func.lower(AdminUser.username)==ident,func.lower(AdminUser.email)==ident)))
-    if not user or not user.active or not verify_password(password,user.password_hash): raise HTTPException(401,'ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ Ð»Ð¾Ð³Ð¸Ð½ Ð¸Ð»Ð¸ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ')
+    if not user or not user.active or not verify_password(password,user.password_hash): raise HTTPException(401,'Неверный логин или пароль')
     user.last_login_at=now();db.commit()
     return {'access_token':make_token(user),'token_type':'bearer','user':user_dict(user)}
 @app.get('/api/v1/auth/me')
@@ -139,8 +178,8 @@ def me(user:AdminUser=Depends(current_user)): return user_dict(user)
 @app.post('/api/v1/auth/change-password')
 def change_password(p:dict,user:AdminUser=Depends(current_user),db:Session=Depends(get_db)):
     old=str(p.get('old_password',''));new=str(p.get('new_password',''))
-    if not verify_password(old,user.password_hash):raise HTTPException(400,'Ð¢ÐµÐºÑƒÑ‰Ð¸Ð¹ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ Ð½ÐµÐ²ÐµÑ€ÐµÐ½')
-    if len(new)<14:raise HTTPException(400,'ÐÐ¾Ð²Ñ‹Ð¹ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ Ð´Ð¾Ð»Ð¶ÐµÐ½ ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‚ÑŒ Ð½Ðµ Ð¼ÐµÐ½ÐµÐµ 14 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²')
+    if not verify_password(old,user.password_hash):raise HTTPException(400,'Текущий пароль неверен')
+    if len(new)<14:raise HTTPException(400,'Новый пароль должен содержать не менее 14 символов')
     user.password_hash=hash_password(new);db.commit();return {'ok':True}
 def public_upload_token(code:str)->str:
     # Token is scoped to one public report code and signed with the server secret.
@@ -173,16 +212,10 @@ async def public_upload_attachment(
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'video/mp4','video/webm',
     }
-    content_type=(file.content_type or '').lower().split(';',1)[0].strip()
-    if content_type not in allowed:
-        raise HTTPException(415,'Разрешены JPG, PNG, WEBP, PDF, DOC, DOCX, MP4 и WEBM')
-
+    claimed_type=(file.content_type or '').lower().split(';',1)[0].strip()
     limit=settings.max_upload_mb*1024*1024
     data=await file.read(limit+1)
-    if not data:
-        raise HTTPException(400,'Файл пустой')
-    if len(data)>limit:
-        raise HTTPException(413,f'Максимальный размер файла: {settings.max_upload_mb} МБ')
+    content_type=validate_upload(data, claimed_type, limit)
 
     original_name=Path(file.filename or 'evidence').name[:255] or 'evidence'
     suffix=Path(original_name).suffix.lower()[:10]
@@ -224,7 +257,7 @@ def reports(status:str|None=None,category:str|None=None,region:str|None=None,sea
     q=select(Report)
     if status:
         try:q=q.where(Report.status==Status(status))
-        except ValueError:raise HTTPException(400,'ÐÐµÐ¸Ð·Ð²ÐµÑÑ‚Ð½Ñ‹Ð¹ ÑÑ‚Ð°Ñ‚ÑƒÑ')
+        except ValueError:raise HTTPException(400,'Неизвестный статус')
     if category:q=q.where(Report.category==category)
     if region:q=q.where(Report.region.ilike(f'%{region}%'))
     if assigned_staff_id:q=q.where(Report.assigned_staff_id==assigned_staff_id)
@@ -244,22 +277,25 @@ def detail(code:str,user:AdminUser=Depends(require_roles('viewer')),db:Session=D
     d['notes']=[{'author':n.author,'body':n.body,'created_at':iso(n.created_at)} for n in db.scalars(select(InternalNote).where(InternalNote.report_id==r.id).order_by(InternalNote.created_at.desc())).all()]
     d['history']=[{'actor':e.actor,'action':e.action,'details':e.details,'created_at':iso(e.created_at)} for e in db.scalars(select(AuditEvent).where(AuditEvent.report_id==r.id).order_by(AuditEvent.created_at.desc())).all()]
     d['attachments']=[{'id':a.id,'name':a.original_name,'size':a.size,'content_type':a.content_type,'created_at':iso(a.created_at)} for a in db.scalars(select(Attachment).where(Attachment.report_id==r.id).order_by(Attachment.created_at.desc())).all()]
+    transfers=db.scalars(select(InteragencyTransfer).where(InteragencyTransfer.report_id==r.id).order_by(InteragencyTransfer.created_at.desc())).all()
+    d['transfer_history']=[transfer_dict(t) for t in transfers]
+    d['transfers']=d['transfer_history']
     return d
 @app.patch('/api/v1/admin/reports/{code}/status')
 def change_status(code:str,p:StatusUpdate,user:AdminUser=Depends(require_roles('operator')),db:Session=Depends(get_db)):
-    r=find_report(db,code);old=r.status.value;r.status=Status(p.status);audit(db,r,user.username,'Ð˜Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ðµ ÑÑ‚Ð°Ñ‚ÑƒÑÐ°',f'{old} â†’ {p.status}');db.commit();return {'public_code':code,'status':r.status.value}
+    r=find_report(db,code);old=r.status.value;r.status=Status(p.status);audit(db,r,user.username,'Изменение статуса',f'{old} → {p.status}');db.commit();return {'public_code':code,'status':r.status.value}
 @app.patch('/api/v1/admin/reports/{code}/workflow')
 def workflow(code:str,p:dict,user:AdminUser=Depends(require_roles('manager')),db:Session=Depends(get_db)):
     r=find_report(db,code)
     priority=p.get('priority',r.priority)
-    if priority not in ('low','normal','high','critical'):raise HTTPException(400,'ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ Ð¿Ñ€Ð¸Ð¾Ñ€Ð¸Ñ‚ÐµÑ‚')
+    if priority not in ('low','normal','high','critical'):raise HTTPException(400,'Некорректный приоритет')
     r.priority=priority
     due=p.get('due_at')
     if due:
         try:r.due_at=datetime.fromisoformat(due.replace('Z','+00:00'))
-        except Exception:raise HTTPException(400,'ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ð°Ñ Ð´Ð°Ñ‚Ð° ÑÑ€Ð¾ÐºÐ°')
+        except Exception:raise HTTPException(400,'Некорректная дата срока')
     elif 'due_at' in p:r.due_at=None
-    audit(db,r,user.username,'Ð˜Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ðµ ÐºÐ¾Ð½Ñ‚Ñ€Ð¾Ð»Ñ',f'ÐŸÑ€Ð¸Ð¾Ñ€Ð¸Ñ‚ÐµÑ‚: {priority}; ÑÑ€Ð¾Ðº: {iso(r.due_at)}');db.commit();return {'ok':True}
+    audit(db,r,user.username,'Изменение контроля',f'Приоритет: {priority}; срок: {iso(r.due_at)}');db.commit();return {'ok':True}
 @app.get('/api/v1/admin/staff')
 def staff_list(user:AdminUser=Depends(require_roles('viewer')),db:Session=Depends(get_db)):
     return [{'id':s.id,'full_name':s.full_name,'position':s.position,'department':s.department,'active':s.active} for s in db.scalars(select(Staff).order_by(Staff.full_name)).all()]
@@ -271,15 +307,15 @@ def assign(code:str,p:AssignmentUpdate,user:AdminUser=Depends(require_roles('man
     r=find_report(db,code)
     if p.staff_id:
         s=db.get(Staff,p.staff_id)
-        if not s or not s.active:raise HTTPException(400,'Ð¡Ð¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½ Ð¸Ð»Ð¸ Ð½ÐµÐ°ÐºÑ‚Ð¸Ð²ÐµÐ½')
-        r.assigned_staff_id=s.id;desc=f'ÐÐ°Ð·Ð½Ð°Ñ‡ÐµÐ½ Ð¸ÑÐ¿Ð¾Ð»Ð½Ð¸Ñ‚ÐµÐ»ÑŒ: {s.full_name}'
-    else:r.assigned_staff_id=None;desc='ÐžÑ‚Ð²ÐµÑ‚ÑÑ‚Ð²ÐµÐ½Ð½Ñ‹Ð¹ ÑÐ¾Ñ‚Ñ€ÑƒÐ´Ð½Ð¸Ðº ÑÐ½ÑÑ‚'
-    audit(db,r,user.username,'ÐÐ°Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ð¸ÑÐ¿Ð¾Ð»Ð½Ð¸Ñ‚ÐµÐ»Ñ',desc);db.commit();return {'assigned_staff_id':r.assigned_staff_id}
+        if not s or not s.active:raise HTTPException(400,'Сотрудник не найден или неактивен')
+        r.assigned_staff_id=s.id;desc=f'Назначен исполнитель: {s.full_name}'
+    else:r.assigned_staff_id=None;desc='Ответственный сотрудник снят'
+    audit(db,r,user.username,'Назначение исполнителя',desc);db.commit();return {'assigned_staff_id':r.assigned_staff_id}
 @app.post('/api/v1/admin/reports/{code}/notes')
 def add_note(code:str,p:dict,user:AdminUser=Depends(require_roles('operator')),db:Session=Depends(get_db)):
     body=str(p.get('body','')).strip()
-    if not body or len(body)>5000:raise HTTPException(400,'Ð—Ð°Ð¼ÐµÑ‚ÐºÐ° Ð´Ð¾Ð»Ð¶Ð½Ð° ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‚ÑŒ 1â€“5000 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²')
-    r=find_report(db,code);db.add(InternalNote(report_id=r.id,author=user.username,body=body));audit(db,r,user.username,'Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð·Ð°Ð¼ÐµÑ‚ÐºÐ°','Ð”Ð¾Ð±Ð°Ð²Ð»ÐµÐ½Ð° Ð²Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð·Ð°Ð¼ÐµÑ‚ÐºÐ°');db.commit();return {'ok':True}
+    if not body or len(body)>5000:raise HTTPException(400,'Заметка должна содержать 1–5000 символов')
+    r=find_report(db,code);db.add(InternalNote(report_id=r.id,author=user.username,body=body));audit(db,r,user.username,'Внутренняя заметка','Добавлена внутренняя заметка');db.commit();return {'ok':True}
 def _supabase_storage_config():
     supabase_url = os.getenv('SUPABASE_URL', '').strip().rstrip('/')
     service_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '').strip()
@@ -345,17 +381,14 @@ def _supabase_download(stored_name: str) -> bytes:
 @app.post('/api/v1/admin/reports/{code}/attachments')
 async def upload_attachment(code:str,file:UploadFile=File(...),user:AdminUser=Depends(require_roles('operator')),db:Session=Depends(get_db)):
     r=find_report(db,code)
-    allowed={'image/jpeg','image/png','image/webp','application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document'}
-    if file.content_type not in allowed:
-        raise HTTPException(415,'Разрешены JPG, PNG, WEBP, PDF, DOC и DOCX')
+    claimed_type=(file.content_type or '').lower().split(';',1)[0].strip()
     data=await file.read(settings.max_upload_mb*1024*1024+1)
-    if len(data)>settings.max_upload_mb*1024*1024:
-        raise HTTPException(413,f'Максимальный размер файла: {settings.max_upload_mb} МБ')
+    detected_type=validate_upload(data, claimed_type, settings.max_upload_mb*1024*1024)
     original_name=Path(file.filename or 'file').name[:255]
     stored=f'{uuid.uuid4().hex}{Path(original_name).suffix.lower()[:10]}'
     await asyncio.to_thread(_supabase_upload, data, stored, file.content_type or 'application/octet-stream')
     try:
-        a=Attachment(report_id=r.id,original_name=original_name,stored_name=stored,content_type=file.content_type,size=len(data),uploaded_by=user.username)
+        a=Attachment(report_id=r.id,original_name=original_name,stored_name=stored,content_type=detected_type,size=len(data),uploaded_by=user.username)
         db.add(a)
         audit(db,r,user.username,'Вложение',f'Загружен файл: {a.original_name}')
         db.commit()
@@ -427,43 +460,221 @@ async def delete_attachment(
     return {'ok': True, 'message': 'Файл удалён'}
 
 
+
+# -------------------- Межведомственная маршрутизация --------------------
+ALLOWED_RECIPIENTS={"ГУУР МВД КР","СВР МВД КР","Академия МВД КР","СОП"}
+TRANSFER_TYPES={"execution","review","assistance","joint","information"}
+TRANSFER_STATUSES={"pending","accepted","rejected","completed"}
+
+@app.post('/api/v1/admin/reports/{code}/transfers', status_code=201)
+def create_transfer(code:str,p:dict,user:AdminUser=Depends(require_roles('manager')),db:Session=Depends(get_db)):
+    report=find_report(db,code)
+
+    # The admin panel sends to_department/destination_department and due_at.
+    recipient=str(p.get('recipient_department') or p.get('to_department') or p.get('destination_department') or '').strip()
+    if not recipient or len(recipient)>160:
+        raise HTTPException(400,'Укажите корректное подразделение-получателя')
+    # Known recipients are explicitly recognized. A custom destination is recorded as a
+    # manually specified destination; this API does not transmit data to that agency.
+    if recipient not in ALLOWED_RECIPIENTS and not p.get('department_code') == 'Другое подразделение':
+        raise HTTPException(400,'Выберите разрешённое подразделение-получателя или укажите другое подразделение')
+
+    transfer_type=str(p.get('transfer_type','review'))
+    if transfer_type not in TRANSFER_TYPES:
+        raise HTTPException(400,'Некорректный тип передачи')
+
+    reason=str(p.get('reason','')).strip()
+    legal_basis=str(p.get('legal_basis') or reason).strip()
+    if len(reason)<5 or len(reason)>5000:
+        raise HTTPException(400,'Основание передачи должно содержать 5–5000 символов')
+    if len(legal_basis)<5 or len(legal_basis)>5000:
+        raise HTTPException(400,'Укажите правовое основание передачи (5–5000 символов)')
+
+    deadline_value=p.get('deadline') or p.get('due_at')
+    deadline=None
+    if deadline_value:
+        try:
+            deadline=datetime.fromisoformat(str(deadline_value).replace('Z','+00:00'))
+            if deadline.tzinfo is None:
+                deadline=deadline.replace(tzinfo=timezone.utc)
+        except Exception:
+            raise HTTPException(400,'Некорректная дата срока')
+        if deadline < now()-timedelta(minutes=1):
+            raise HTTPException(400,'Срок передачи не может быть в прошлом')
+
+    priority=str(p.get('priority','normal'))
+    if priority not in ('low','normal','high','critical'):
+        raise HTTPException(400,'Некорректный приоритет')
+
+    staff_id=p.get('to_staff_id') or p.get('destination_staff_id')
+    recipient_person=str(p.get('recipient_person') or '').strip()
+    staff_obj=None
+    if staff_id:
+        staff_obj=db.get(Staff,str(staff_id))
+        if not staff_obj or not staff_obj.active:
+            raise HTTPException(400,'Сотрудник-получатель не найден или неактивен')
+        recipient_person=staff_obj.full_name
+
+    receiving_unit=str(p.get('receiving_unit') or '').strip()
+    if len(receiving_unit)>160:
+        raise HTTPException(400,'Название внутреннего подразделения не должно превышать 160 символов')
+
+    transfer=InteragencyTransfer(
+        report_id=report.id,
+        recipient_department=recipient,
+        recipient_person=recipient_person[:160],
+        recipient_staff_id=staff_obj.id if staff_obj else None,
+        receiving_unit=receiving_unit,
+        transfer_type=transfer_type,
+        legal_basis=legal_basis,
+        reason=reason,
+        priority=priority,
+        deadline=deadline,
+        created_by=user.username,
+        status='pending'
+    )
+    db.add(transfer)
+    audit(db,report,user.username,'Межведомственная передача',
+          f'{recipient}; тип: {transfer_type}; срок: {iso(deadline)}')
+    db.commit()
+    db.refresh(transfer)
+    return transfer_dict(transfer)
+
+@app.get('/api/v1/admin/reports/{code}/transfers')
+def list_transfers(code:str,user:AdminUser=Depends(require_roles('viewer')),db:Session=Depends(get_db)):
+    report=find_report(db,code)
+    rows=db.scalars(select(InteragencyTransfer).where(
+        InteragencyTransfer.report_id==report.id
+    ).order_by(InteragencyTransfer.created_at.desc())).all()
+    return [transfer_dict(x) for x in rows]
+
+def _set_transfer_decision(transfer_id:str,decision:str,user:AdminUser,db:Session):
+    transfer=db.get(InteragencyTransfer,transfer_id)
+    if not transfer:
+        raise HTTPException(404,'Передача не найдена')
+    if transfer.status!='pending':
+        raise HTTPException(409,'Решение по этой передаче уже принято')
+    transfer.status=decision
+    transfer.updated_at=now()
+    report=db.get(Report,transfer.report_id)
+    label='Приём межведомственной передачи подтверждён' if decision=='accepted' else 'Межведомственная передача отклонена'
+    audit(db,report,user.username,label,transfer.recipient_department)
+    db.commit()
+    db.refresh(transfer)
+    return transfer_dict(transfer)
+
+@app.post('/api/v1/admin/transfers/{transfer_id}/accept')
+def accept_transfer(transfer_id:str,user:AdminUser=Depends(require_roles('manager')),db:Session=Depends(get_db)):
+    return _set_transfer_decision(transfer_id,'accepted',user,db)
+
+@app.post('/api/v1/admin/transfers/{transfer_id}/reject')
+def reject_transfer(transfer_id:str,user:AdminUser=Depends(require_roles('manager')),db:Session=Depends(get_db)):
+    return _set_transfer_decision(transfer_id,'rejected',user,db)
+
+@app.patch('/api/v1/admin/transfers/{transfer_id}')
+def update_transfer(transfer_id:str,p:dict,user:AdminUser=Depends(require_roles('manager')),db:Session=Depends(get_db)):
+    transfer=db.get(InteragencyTransfer,transfer_id)
+    if not transfer:
+        raise HTTPException(404,'Передача не найдена')
+    status=str(p.get('status',transfer.status))
+    if status not in TRANSFER_STATUSES:
+        raise HTTPException(400,'Некорректный статус передачи')
+    comment=str(p.get('comment','')).strip()
+    if len(comment)>2000:
+        raise HTTPException(400,'Комментарий слишком длинный')
+    transfer.status=status
+    if comment:
+        transfer.last_comment=comment
+    transfer.updated_at=now()
+    report=db.get(Report,transfer.report_id)
+    audit(db,report,user.username,'Изменение статуса передачи',
+          f'{transfer.recipient_department}: {status}; {comment}')
+    db.commit()
+    db.refresh(transfer)
+    return transfer_dict(transfer)
+
+def transfer_dict(t):
+    return {
+        'id':t.id,
+        'report_id':t.report_id,
+        'recipient_department':t.recipient_department,
+        'to_department':t.recipient_department,
+        'destination_department':t.recipient_department,
+        'recipient_person':t.recipient_person,
+        'to_staff_name':t.recipient_person or None,
+        'destination_staff_name':t.recipient_person or None,
+        'to_staff_id':t.recipient_staff_id,
+        'destination_staff_id':t.recipient_staff_id,
+        'transfer_type':t.transfer_type,
+        'legal_basis':t.legal_basis,
+        'reason':t.reason,
+        'priority':t.priority,
+        'deadline':iso(t.deadline),
+        'due_at':iso(t.deadline),
+        'receiving_unit':t.receiving_unit or '',
+        'recipient_staff_id':t.recipient_staff_id,
+        'status':t.status,
+        'created_by':t.created_by,
+        'last_comment':t.last_comment,
+        'response_note':t.last_comment,
+        'created_at':iso(t.created_at),
+        'updated_at':iso(t.updated_at)
+    }
+
+@app.get('/api/v1/admin/analytics/summary')
+def analytics_summary(user:AdminUser=Depends(require_roles('manager')),db:Session=Depends(get_db)):
+    total=db.scalar(select(func.count()).select_from(Report)) or 0
+    by_region=db.execute(select(Report.region,func.count()).group_by(Report.region).order_by(func.count().desc())).all()
+    by_category=db.execute(select(Report.category,func.count()).group_by(Report.category).order_by(func.count().desc())).all()
+    by_priority=db.execute(select(Report.priority,func.count()).group_by(Report.priority)).all()
+    by_status=db.execute(select(Report.status,func.count()).group_by(Report.status)).all()
+    overdue=db.scalar(select(func.count()).select_from(Report).where(Report.due_at<now(),Report.status!=Status.closed)) or 0
+    return {'total':total,'overdue':overdue,'regions':[{'name':n or 'Не указан', 'count':c} for n,c in by_region],'categories':[{'name':n or 'Не указана','count':c} for n,c in by_category],'priorities':[{'name':n,'count':c} for n,c in by_priority],'statuses':[{'name':n.value if hasattr(n,'value') else str(n),'count':c} for n,c in by_status]}
+
+@app.get('/api/v1/admin/security/overview')
+def security_overview(user:AdminUser=Depends(require_roles('superadmin')),db:Session=Depends(get_db)):
+    active=db.scalar(select(func.count()).select_from(AdminUser).where(AdminUser.active==True)) or 0
+    inactive=db.scalar(select(func.count()).select_from(AdminUser).where(AdminUser.active==False)) or 0
+    recent=db.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(50)).all()
+    return {'active_users':active,'inactive_users':inactive,'recent_admin_actions':[{'actor':e.actor,'action':e.action,'details':e.details,'created_at':iso(e.created_at)} for e in recent]}
+
 @app.get('/api/v1/admin/users')
 def users_list(user:AdminUser=Depends(require_roles('superadmin')),db:Session=Depends(get_db)):
     return [user_dict(u) for u in db.scalars(select(AdminUser).order_by(AdminUser.created_at)).all()]
 @app.post('/api/v1/admin/users')
 def user_create(p:dict,user:AdminUser=Depends(require_roles('superadmin')),db:Session=Depends(get_db)):
     username=str(p.get('username','')).strip();email=str(p.get('email','')).strip().lower();password=str(p.get('password',''));role=str(p.get('role','operator'))
-    if not username or len(username)>80 or '@' in username:raise HTTPException(400,'Ð£ÐºÐ°Ð¶Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ Ð»Ð¾Ð³Ð¸Ð½')
-    if '@' not in email or len(email)>254:raise HTTPException(400,'Ð£ÐºÐ°Ð¶Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ email')
-    if role not in ('admin','manager','operator','viewer'):raise HTTPException(400,'ÐÐµÐ´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ð°Ñ Ñ€Ð¾Ð»ÑŒ. SUPERADMIN Ð½ÐµÐ»ÑŒÐ·Ñ Ð½Ð°Ð·Ð½Ð°Ñ‡Ð¸Ñ‚ÑŒ Ñ‡ÐµÑ€ÐµÐ· Ð¿Ð°Ð½ÐµÐ»ÑŒ.')
-    if len(password)<14:raise HTTPException(400,'ÐŸÐ°Ñ€Ð¾Ð»ÑŒ Ð´Ð¾Ð»Ð¶ÐµÐ½ ÑÐ¾Ð´ÐµÑ€Ð¶Ð°Ñ‚ÑŒ Ð½Ðµ Ð¼ÐµÐ½ÐµÐµ 14 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²')
-    if db.scalar(select(AdminUser).where(or_(func.lower(AdminUser.username)==username.lower(),func.lower(AdminUser.email)==email.lower()))):raise HTTPException(409,'Ð›Ð¾Ð³Ð¸Ð½ Ð¸Ð»Ð¸ email ÑƒÐ¶Ðµ Ð·Ð°Ð½ÑÑ‚')
+    if not username or len(username)>80 or '@' in username:raise HTTPException(400,'Укажите корректный логин')
+    if '@' not in email or len(email)>254:raise HTTPException(400,'Укажите корректный email')
+    if role not in ('admin','manager','operator','viewer'):raise HTTPException(400,'Недопустимая роль. SUPERADMIN нельзя назначить через панель.')
+    if len(password)<14:raise HTTPException(400,'Пароль должен содержать не менее 14 символов')
+    if db.scalar(select(AdminUser).where(or_(func.lower(AdminUser.username)==username.lower(),func.lower(AdminUser.email)==email.lower()))):raise HTTPException(409,'Логин или email уже занят')
     u=AdminUser(username=username,email=email,full_name=str(p.get('full_name',''))[:160],password_hash=hash_password(password),role=role,active=True);db.add(u);db.commit();db.refresh(u);return user_dict(u)
 @app.patch('/api/v1/admin/users/{user_id}')
 def user_update(user_id:str,p:dict,user:AdminUser=Depends(require_roles('superadmin')),db:Session=Depends(get_db)):
     target=db.get(AdminUser,user_id)
-    if not target:raise HTTPException(404,'ÐŸÐ¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÐµÐ»ÑŒ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½')
-    if target.role=='superadmin':raise HTTPException(403,'Ð£Ñ‡Ñ‘Ñ‚Ð½ÑƒÑŽ Ð·Ð°Ð¿Ð¸ÑÑŒ SUPERADMIN Ð½ÐµÐ»ÑŒÐ·Ñ Ð¼ÐµÐ½ÑÑ‚ÑŒ Ñ‡ÐµÑ€ÐµÐ· Ð¿Ð°Ð½ÐµÐ»ÑŒ')
+    if not target:raise HTTPException(404,'Пользователь не найден')
+    if target.role=='superadmin':raise HTTPException(403,'Учётную запись SUPERADMIN нельзя менять через панель')
     if 'active' in p:target.active=bool(p['active'])
     if 'username' in p:
         username=str(p['username']).strip()
-        if not username or len(username)>80 or '@' in username:raise HTTPException(400,'Ð£ÐºÐ°Ð¶Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ Ð»Ð¾Ð³Ð¸Ð½')
+        if not username or len(username)>80 or '@' in username:raise HTTPException(400,'Укажите корректный логин')
         duplicate=db.scalar(select(AdminUser).where(func.lower(AdminUser.username)==username.lower(),AdminUser.id!=target.id))
-        if duplicate:raise HTTPException(409,'Ð­Ñ‚Ð¾Ñ‚ Ð»Ð¾Ð³Ð¸Ð½ ÑƒÐ¶Ðµ Ð·Ð°Ð½ÑÑ‚')
+        if duplicate:raise HTTPException(409,'Этот логин уже занят')
         target.username=username
     if 'email' in p:
         email=str(p['email']).strip().lower()
-        if '@' not in email or len(email)>254:raise HTTPException(400,'Ð£ÐºÐ°Ð¶Ð¸Ñ‚Ðµ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ email')
+        if '@' not in email or len(email)>254:raise HTTPException(400,'Укажите корректный email')
         duplicate=db.scalar(select(AdminUser).where(func.lower(AdminUser.email)==email.lower(),AdminUser.id!=target.id))
-        if duplicate:raise HTTPException(409,'Ð­Ñ‚Ð¾Ñ‚ email ÑƒÐ¶Ðµ Ð·Ð°Ð½ÑÑ‚')
+        if duplicate:raise HTTPException(409,'Этот email уже занят')
         target.email=email
     if 'full_name' in p:target.full_name=str(p['full_name']).strip()[:160]
     if 'role' in p:
-        if p['role'] not in ('admin','manager','operator','viewer'):raise HTTPException(400,'ÐÐµÐ´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ð°Ñ Ñ€Ð¾Ð»ÑŒ')
+        if p['role'] not in ('admin','manager','operator','viewer'):raise HTTPException(400,'Недопустимая роль')
         target.role=p['role']
     if p.get('new_password'):
         new_password=str(p['new_password'])
-        if len(new_password)<14:raise HTTPException(400,'ÐŸÐ°Ñ€Ð¾Ð»ÑŒ Ð½Ðµ Ð¼ÐµÐ½ÐµÐµ 14 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²')
+        if len(new_password)<14:raise HTTPException(400,'Пароль не менее 14 символов')
         target.password_hash=hash_password(new_password)
     db.commit();return user_dict(target)
 @app.get('/api/v1/admin/audit')
